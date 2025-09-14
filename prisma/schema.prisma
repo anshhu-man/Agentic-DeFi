@@ -1,0 +1,165 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  ensName         String?  @unique @map("ens_name")
+  walletAddresses Json     @map("wallet_addresses")
+  preferences     Json     @default("{}")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  queryHistory QueryHistory[]
+  alerts       Alert[]
+  transactions Transaction[]
+  portfolios   Portfolio[]
+
+  @@map("users")
+}
+
+model QueryHistory {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  queryText    String   @map("query_text")
+  queryType    String   @map("query_type")
+  responseData Json     @map("response_data")
+  executionTime Int     @map("execution_time") // in milliseconds
+  success      Boolean  @default(true)
+  errorMessage String?  @map("error_message")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("query_history")
+}
+
+model Alert {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  alertType  String   @map("alert_type") // liquidation, yield_change, governance, price
+  conditions Json     // alert conditions and thresholds
+  isActive   Boolean  @default(true) @map("is_active")
+  lastTriggered DateTime? @map("last_triggered")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("alerts")
+}
+
+model Transaction {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  chainId   Int      @map("chain_id")
+  txHash    String   @map("tx_hash")
+  txType    String   @map("tx_type") // swap, lend, borrow, governance, bridge
+  status    String   @default("pending") // pending, confirmed, failed
+  metadata  Json     @default("{}")
+  gasUsed   String?  @map("gas_used")
+  gasPrice  String?  @map("gas_price")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+}
+
+model Portfolio {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  chainId     Int      @map("chain_id")
+  address     String
+  tokenBalances Json   @map("token_balances")
+  defiPositions Json   @map("defi_positions")
+  nftHoldings   Json   @map("nft_holdings")
+  totalValueUSD String @map("total_value_usd")
+  lastUpdated   DateTime @map("last_updated")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chainId, address])
+  @@map("portfolios")
+}
+
+model PriceData {
+  id        String   @id @default(uuid())
+  symbol    String
+  price     String
+  change24h String   @map("change_24h")
+  volume24h String   @map("volume_24h")
+  marketCap String?  @map("market_cap")
+  timestamp DateTime @default(now())
+
+  @@unique([symbol, timestamp])
+  @@map("price_data")
+}
+
+model GovernanceProposal {
+  id          String   @id @default(uuid())
+  daoAddress  String   @map("dao_address")
+  proposalId  String   @map("proposal_id")
+  title       String
+  description String
+  status      String   // active, passed, failed, pending
+  startTime   DateTime @map("start_time")
+  endTime     DateTime @map("end_time")
+  votesFor    String   @map("votes_for")
+  votesAgainst String  @map("votes_against")
+  quorum      String
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([daoAddress, proposalId])
+  @@map("governance_proposals")
+}
+
+model YieldOpportunity {
+  id            String   @id @default(uuid())
+  protocol      String
+  chainId       Int      @map("chain_id")
+  tokenAddress  String   @map("token_address")
+  tokenSymbol   String   @map("token_symbol")
+  apy           String
+  tvl           String
+  riskScore     Int      @map("risk_score") // 1-10 scale
+  category      String   // lending, liquidity_pool, staking
+  metadata      Json     @default("{}")
+  isActive      Boolean  @default(true) @map("is_active")
+  lastUpdated   DateTime @map("last_updated")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([protocol, chainId, tokenAddress])
+  @@map("yield_opportunities")
+}
+
+model AgentExecution {
+  id           String   @id @default(uuid())
+  agentType    String   @map("agent_type") // yield, risk, governance
+  inputData    Json     @map("input_data")
+  outputData   Json     @map("output_data")
+  executionTime Int     @map("execution_time") // in milliseconds
+  success      Boolean  @default(true)
+  errorMessage String?  @map("error_message")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("agent_executions")
+}

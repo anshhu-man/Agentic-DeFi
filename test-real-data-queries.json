@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Current ETH Price with Confidence",
+    "query": "What is the current ETH price with confidence intervals?",
+    "userAddress": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+    "preferences": {
+      "tokens": ["ETH"],
+      "includeConfidence": true,
+      "includeTimestamp": true
+    }
+  },
+  {
+    "name": "Cross-Chain ETH Arbitrage",
+    "query": "Find arbitrage opportunities for ETH between Ethereum and Polygon",
+    "userAddress": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+    "preferences": {
+      "tokens": ["ETH"],
+      "chains": [1, 137],
+      "minProfitBps": 25
+    }
+  },
+  {
+    "name": "High Confidence USDC Yields",
+    "query": "Show me USDC yield opportunities with >80% price confidence",
+    "userAddress": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+    "preferences": {
+      "tokens": ["USDC"],
+      "minConfidence": 80,
+      "riskTolerance": "medium"
+    }
+  },
+  {
+    "name": "Real-time Price Impact Analysis",
+    "query": "What's the price impact for a $50,000 ETH trade with current liquidity?",
+    "userAddress": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+    "preferences": {
+      "tokens": ["ETH"],
+      "amount": "50000",
+      "includePriceImpact": true
+    }
+  },
+  {
+    "name": "Multi-Token Confidence Comparison",
+    "query": "Compare price confidence scores for ETH, BTC, and USDC",
+    "userAddress": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+    "preferences": {
+      "tokens": ["ETH", "BTC", "USDC"],
+      "includeConfidence": true,
+      "compareAcrossTokens": true
+    }
+  }
+]

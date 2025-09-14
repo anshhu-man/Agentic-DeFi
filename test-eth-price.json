@@ -1,0 +1,8 @@
+{
+  "query": "What is the current ETH price with confidence intervals?",
+  "userAddress": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+  "preferences": {
+    "tokens": ["ETH"],
+    "includeConfidence": true
+  }
+}
