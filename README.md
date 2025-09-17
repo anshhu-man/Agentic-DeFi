@@ -51,8 +51,8 @@ npm run dev    # or npm start / npm run build as per package.json
 ```
 
 Environment variables:
-- `.env` is now at: `trees/branches/backend/childs/.env`
-- Example file: `trees/branches/backend/childs/.env.example`
+- `.env` is now at: `backend/.env`
+- Example file: `backend/.env.example`
 
 ## Running the frontend
 
@@ -64,20 +64,4 @@ npm install
 npm run dev
 ```
 
-Frontend environment variables (if any) are in:
-- `trees/branches/frontend/childs/agentic-defi-vista-90/.env.local`
 
-## Notes and implications
-
-- Path changes: Any external scripts, CI workflows, or deployment configs that referenced old paths must be updated to the new locations under `trees/branches/.../childs`.
-- Git status: The tracked moves are already staged as renames. A single commit can finalize the restructure.
-- Root tooling: There is no root-level `package.json` anymore. Run commands inside the respective `childs` subfolders.
-- Supabase and other integrations live inside the frontend app folder under `trees/branches/frontend/childs/agentic-defi-vista-90`.
-
-## Commit the restructure (optional)
-
-If you want to finalize the changes:
-
-```
-git add .
-git commit -m "Restructure repo into trees/branches/childs for backend and frontend"
