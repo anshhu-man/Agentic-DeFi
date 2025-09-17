@@ -26,9 +26,11 @@ export const prisma = globalThis.__prisma || new PrismaClient({
   ],
 });
 
+const prismaAny = prisma as any;
+
 // Log database queries in development
 if (process.env.NODE_ENV === 'development') {
-  prisma.$on('query', (e) => {
+  prismaAny.$on('query', (e: any) => {
     logger.debug('Database Query', {
       query: e.query,
       params: e.params,
@@ -37,15 +39,16 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-prisma.$on('error', (e) => {
+// Attach generic log listeners (avoid Prisma type narrowing issues at compile-time)
+prismaAny.$on('error', (e: any) => {
   logger.error('Database Error', { error: e });
 });
 
-prisma.$on('info', (e) => {
+prismaAny.$on('info', (e: any) => {
   logger.info('Database Info', { message: e.message });
 });
 
-prisma.$on('warn', (e) => {
+prismaAny.$on('warn', (e: any) => {
   logger.warn('Database Warning', { message: e.message });
 });
 

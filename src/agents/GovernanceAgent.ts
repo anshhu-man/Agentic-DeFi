@@ -177,10 +177,7 @@ export class GovernanceAgent {
     }
   }
 
-  async analyzeProposal(params: {
-    proposalId: string;
-    daoAddress: string;
-  }): Promise<{
+  async analyzeProposal(params: any): Promise<{
     summary: string;
     impact: 'low' | 'medium' | 'high';
     recommendation: 'for' | 'against' | 'abstain';
@@ -189,7 +186,7 @@ export class GovernanceAgent {
     timeRemaining: string;
   }> {
     try {
-      const { proposalId, daoAddress } = params;
+      const { proposalId = '', daoAddress = '' } = params || {};
 
       const cacheKey = `governance:analysis:${proposalId}`;
       const cached = await cache.get<any>(cacheKey);
@@ -231,10 +228,7 @@ export class GovernanceAgent {
     }
   }
 
-  async getVotingPower(params: {
-    userAddress: string;
-    daoAddresses: string[];
-  }): Promise<Array<{
+  async getVotingPower(params: any): Promise<Array<{
     daoAddress: string;
     daoName: string;
     votingPower: string;
@@ -243,7 +237,7 @@ export class GovernanceAgent {
     delegatedTo?: string;
   }>> {
     try {
-      const { userAddress, daoAddresses } = params;
+      const { userAddress = '', daoAddresses = [] } = params || {};
 
       const votingPowers = [];
 

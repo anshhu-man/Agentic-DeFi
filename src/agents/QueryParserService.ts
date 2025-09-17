@@ -1,15 +1,12 @@
-import OpenAI from 'openai';
-import { config } from '@/config';
+import MistralService from '@/services/MistralService';
 import { logger } from '@/utils/logger';
 import { ParsedQuery, AgentTask } from '@/types';
 
 export class QueryParserService {
-  private openai: OpenAI;
+  private mistral: MistralService;
 
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: config.apiKeys.openai,
-    });
+    this.mistral = new MistralService();
   }
 
   async parseNaturalLanguage(query: string): Promise<ParsedQuery> {
@@ -46,22 +43,12 @@ Examples:
 - "Compare ETH/USDC pools across chains" → intent: yield_comparison, tokens: ["ETH", "USDC"]
 `;
 
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-5',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: query }
-        ],
+      const parsed = await this.mistral.chatCompleteJSON<ParsedQuery>({
+        system: systemPrompt,
+        user: query,
         temperature: 0.1,
-        max_tokens: 500,
+        maxTokens: 500,
       });
-
-      const response = completion.choices[0]?.message?.content;
-      if (!response) {
-        throw new Error('No response from OpenAI');
-      }
-
-      const parsed = JSON.parse(response) as ParsedQuery;
       
       // Validate and set defaults
       const result: ParsedQuery = {
@@ -175,7 +162,7 @@ Examples:
 
         case 'market_data':
           // Market data queries can involve multiple agents
-          if (parsedQuery.entities.tokens?.length > 0) {
+          if ((parsedQuery.entities.tokens ?? []).length > 0) {
             tasks.push({
               agentType: 'yield',
               action: 'getMarketOverview',
@@ -245,17 +232,12 @@ Original query: ${query}
 Return an enhanced version of the query that incorporates the context.
 `;
 
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-5',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: query }
-        ],
+      const enhancedQuery = await this.mistral.chatComplete({
+        system: systemPrompt,
+        user: query,
         temperature: 0.3,
-        max_tokens: 200,
+        maxTokens: 200,
       });
-
-      const enhancedQuery = completion.choices[0]?.message?.content || query;
       
       logger.info('Enhanced query with context', {
         originalQuery: query,
@@ -293,22 +275,17 @@ Return JSON format:
 }
 `;
 
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-5',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: text }
-        ],
+      const entities = await this.mistral.chatCompleteJSON<{
+        tokens: string[];
+        protocols: string[];
+        chains: string[];
+        amounts: string[];
+      }>({
+        system: systemPrompt,
+        user: text,
         temperature: 0.1,
-        max_tokens: 300,
+        maxTokens: 300,
       });
-
-      const response = completion.choices[0]?.message?.content;
-      if (!response) {
-        throw new Error('No response from OpenAI');
-      }
-
-      const entities = JSON.parse(response);
       
       return {
         tokens: entities.tokens || [],

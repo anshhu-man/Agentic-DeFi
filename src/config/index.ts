@@ -15,17 +15,18 @@ export const config = {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
   },
   apiKeys: {
-    alchemy: process.env.ALCHEMY_API_KEY || '',
     graph: process.env.GRAPH_API_KEY || '',
-    openai: process.env.OPENAI_API_KEY || '',
-    coingecko: process.env.COINGECKO_API_KEY || '',
+    mistral: process.env.MISTRAL_API_KEY || '',
+  },
+  graph: {
+    disabled: process.env.GRAPH_DISABLED === 'true',
   },
   blockchain: {
     chains: {
       ethereum: {
         id: parseInt(process.env.ETHEREUM_CHAIN_ID || '1'),
         name: 'Ethereum',
-        rpcUrl: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+        rpcUrl: 'https://cloudflare-eth.com',
         nativeCurrency: {
           name: 'Ether',
           symbol: 'ETH',
@@ -36,7 +37,7 @@ export const config = {
       polygon: {
         id: parseInt(process.env.POLYGON_CHAIN_ID || '137'),
         name: 'Polygon',
-        rpcUrl: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+        rpcUrl: 'https://polygon-rpc.com',
         nativeCurrency: {
           name: 'MATIC',
           symbol: 'MATIC',
@@ -59,9 +60,6 @@ export const config = {
   },
   pyth: {
     endpoint: process.env.PYTH_NETWORK_ENDPOINT || 'https://hermes.pyth.network',
-  },
-  coingecko: {
-    baseUrl: process.env.COINGECKO_BASE_URL || 'https://api.coingecko.com/api/v3',
   },
   jwt: {
     secret: process.env.JWT_SECRET || 'your-secret-key',

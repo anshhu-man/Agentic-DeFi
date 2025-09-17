@@ -11,7 +11,6 @@ import { connectRedis } from './utils/redis';
 import { prisma } from './utils/database';
 
 // Import services
-import AlchemyService from './services/AlchemyService';
 import PythService from './services/PythService';
 import GraphService from './services/GraphService';
 
@@ -22,10 +21,12 @@ import GovernanceAgent from './agents/GovernanceAgent';
 import QueryParserService from './agents/QueryParserService';
 import ResponseSynthesizerService from './agents/ResponseSynthesizerService';
 
-// Import controllers
+ // Import controllers
 import queryController from './controllers/queryController';
 import portfolioController from './controllers/portfolioController';
 import alertController from './controllers/alertController';
+import pythController from './controllers/pythController';
+import chatController from './controllers/chatController';
 
 class AgenticExplorerServer {
   private app: express.Application;
@@ -33,7 +34,6 @@ class AgenticExplorerServer {
   private io: Server;
   
   // Services
-  private alchemyService!: AlchemyService;
   private pythService!: PythService;
   private graphService!: GraphService;
   
@@ -64,7 +64,6 @@ class AgenticExplorerServer {
   private initializeServices(): void {
     logger.info('Initializing services...');
     
-    this.alchemyService = new AlchemyService();
     this.pythService = new PythService();
     this.graphService = new GraphService();
     
@@ -76,7 +75,7 @@ class AgenticExplorerServer {
     
     this.queryParser = new QueryParserService();
     this.yieldAgent = new YieldAgent(this.graphService, this.pythService);
-    this.riskAgent = new RiskAgent(this.alchemyService, this.pythService);
+    this.riskAgent = new RiskAgent(this.pythService);
     this.governanceAgent = new GovernanceAgent(this.graphService);
     this.responseSynthesizer = new ResponseSynthesizerService();
     
@@ -91,7 +90,7 @@ class AgenticExplorerServer {
     this.app.use(cors({
       origin: process.env.NODE_ENV === 'production' 
         ? ['https://your-frontend-domain.com'] 
-        : ['http://localhost:3000', 'http://localhost:3001'],
+        : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173', 'http://localhost:8080', 'http://localhost:8081'],
       credentials: true
     }));
 
@@ -125,19 +124,27 @@ class AgenticExplorerServer {
     // Health check
     this.app.get('/health', async (req, res) => {
       try {
+        // Check individual services
+        const databaseHealthy = await this.checkDatabaseHealth();
+        const redisHealthy = await this.checkRedisHealth();
+        const pythHealthy = await this.checkPythHealth();
+        const graphHealthy = config.graph?.disabled ? true : await this.checkGraphHealth();
+
+        // Build response object
         const healthStatus = {
-          status: 'healthy',
+          status: (databaseHealthy && redisHealthy && pythHealthy) ? 'healthy' : 'unhealthy',
           timestamp: new Date().toISOString(),
           services: {
-            database: await this.checkDatabaseHealth(),
-            redis: await this.checkRedisHealth(),
-            alchemy: await this.checkAlchemyHealth(),
-            pyth: await this.checkPythHealth(),
-            graph: await this.checkGraphHealth(),
+            database: databaseHealthy,
+            redis: redisHealthy,
+            pyth: pythHealthy,
+            graph: graphHealthy,
+            aiModel: process.env.MISTRAL_MODEL || 'mistral-medium',
           }
         };
 
-        const allHealthy = Object.values(healthStatus.services).every(status => status);
+        // Only require core services (DB, Redis, Pyth) for overall health
+        const allHealthy = databaseHealthy && redisHealthy && pythHealthy;
         
         res.status(allHealthy ? 200 : 503).json(healthStatus);
       } catch (error) {
@@ -154,6 +161,8 @@ class AgenticExplorerServer {
     this.app.use('/api/query', queryController);
     this.app.use('/api/portfolio', portfolioController);
     this.app.use('/api/alerts', alertController);
+    this.app.use('/api/pyth', pythController);
+    this.app.use('/api/chat', chatController);
 
     // Main query endpoint
     this.app.post('/api/query', async (req, res) => {
@@ -185,23 +194,25 @@ class AgenticExplorerServer {
         
         const executionTime = Date.now() - startTime;
         
-        res.json({
+        return res.json({
           success: true,
           data: {
             ...response,
             executionTime,
             query: query,
+            agentResults,
           },
           meta: {
             timestamp: new Date(),
             executionTime,
-            version: '1.0.0'
+            version: '1.0.0',
+            aiModel: process.env.MISTRAL_MODEL || 'mistral-medium'
           }
         });
 
       } catch (error) {
         logger.error('Query processing failed', { error, query: req.body.query });
-        res.status(500).json({
+        return res.status(500).json({
           success: false,
           error: {
             code: 'QUERY_PROCESSING_FAILED',
@@ -329,14 +340,6 @@ class AgenticExplorerServer {
     }
   }
 
-  private async checkAlchemyHealth(): Promise<boolean> {
-    try {
-      await this.alchemyService.getBlockNumber(1);
-      return true;
-    } catch {
-      return false;
-    }
-  }
 
   private async checkPythHealth(): Promise<boolean> {
     try {

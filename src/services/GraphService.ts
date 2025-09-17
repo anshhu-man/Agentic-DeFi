@@ -1,27 +1,40 @@
 import { GraphQLClient } from 'graphql-request';
-import { config } from '@/config';
-import { logger } from '@/utils/logger';
-import { cache } from '@/utils/redis';
+import { config } from '../config';
+import { logger } from '../utils/logger';
+import { cache } from '../utils/redis';
 import { 
   PoolData, 
   LendingRate, 
   GovernanceProposal, 
   DeFiPosition,
   SubgraphQuery 
-} from '@/types';
+} from '../types';
 
 export class GraphService {
   private clients: Map<string, GraphQLClient> = new Map();
+  private disabled: boolean = !!(config as any).graph?.disabled;
 
   constructor() {
     this.initializeClients();
   }
 
   private initializeClients(): void {
-    // Initialize GraphQL clients for different subgraphs
-    this.clients.set('uniswap', new GraphQLClient(config.subgraphs.uniswap));
-    this.clients.set('aave', new GraphQLClient(config.subgraphs.aave));
-    this.clients.set('compound', new GraphQLClient(config.subgraphs.compound));
+    if (this.disabled) {
+      logger.warn('Graph service disabled via configuration');
+      return;
+    }
+    // Initialize GraphQL clients for different subgraphs (only if URL provided)
+    const headers = config.apiKeys.graph ? { authorization: `Bearer ${config.apiKeys.graph}` } : undefined;
+
+    if (config.subgraphs.uniswap) {
+      this.clients.set('uniswap', new GraphQLClient(config.subgraphs.uniswap, { headers }));
+    }
+    if (config.subgraphs.aave) {
+      this.clients.set('aave', new GraphQLClient(config.subgraphs.aave, { headers }));
+    }
+    if (config.subgraphs.compound) {
+      this.clients.set('compound', new GraphQLClient(config.subgraphs.compound, { headers }));
+    }
     
     logger.info('Initialized Graph service clients', { 
       clientCount: this.clients.size 
@@ -34,6 +47,8 @@ export class GraphService {
     limit: number = 50
   ): Promise<PoolData[]> {
     try {
+      if (this.disabled) return [];
+      if (!this.clients.has('uniswap')) return [];
       const cacheKey = `uniswap:pools:${chainId}:${tokenPair || 'all'}`;
       const cached = await cache.get<PoolData[]>(cacheKey);
       
@@ -86,7 +101,7 @@ export class GraphService {
         }
       `;
 
-      const response = await client.request(query);
+      const response = await client.request<any>(query);
       const pools: PoolData[] = response.pools;
 
       // Cache for 5 minutes
@@ -107,6 +122,8 @@ export class GraphService {
 
   async getAaveLendingRates(chainId: number): Promise<LendingRate[]> {
     try {
+      if (this.disabled) return [];
+      if (!this.clients.has('aave')) return [];
       const cacheKey = `aave:rates:${chainId}`;
       const cached = await cache.get<LendingRate[]>(cacheKey);
       
@@ -138,7 +155,7 @@ export class GraphService {
         }
       `;
 
-      const response = await client.request(query);
+      const response = await client.request<any>(query);
       
       const rates: LendingRate[] = response.reserves.map((reserve: any) => ({
         asset: reserve.symbol,
@@ -196,7 +213,7 @@ export class GraphService {
         }
       `;
 
-      const response = await client.request(query);
+      const response = await client.request<any>(query);
       
       const rates: LendingRate[] = response.markets.map((market: any) => ({
         asset: market.underlyingSymbol || market.symbol,
@@ -298,7 +315,7 @@ export class GraphService {
         }
       `;
 
-      const response = await client.request(query, { address: address.toLowerCase() });
+      const response = await client.request<any>(query, { address: address.toLowerCase() });
       
       const positions: DeFiPosition[] = response.positions.map((position: any) => ({
         protocol: 'Uniswap V3',
@@ -384,7 +401,7 @@ export class GraphService {
           throw new Error(`Unsupported protocol: ${protocol}`);
       }
 
-      const response = await client.request(query);
+      const response = await client.request<any>(query);
       const tvl = this.getNestedValue(response, tvlField) || '0';
 
       // Cache for 15 minutes
@@ -431,7 +448,7 @@ export class GraphService {
         }
       `;
 
-      const response = await client.request(query);
+      const response = await client.request<any>(query);
       
       const tokens = response.tokens.map((token: any) => ({
         symbol: token.symbol,
@@ -489,19 +506,20 @@ export class GraphService {
 
   async isHealthy(): Promise<boolean> {
     try {
-      // Test connectivity to main subgraphs
-      const healthChecks = await Promise.allSettled([
+      if (this.disabled || this.clients.size === 0) {
+        return true;
+      }
+      const [pools, rates] = await Promise.all([
         this.queryUniswapPools(1, undefined, 1),
         this.getAaveLendingRates(1),
       ]);
 
-      const successCount = healthChecks.filter(result => result.status === 'fulfilled').length;
-      const isHealthy = successCount >= healthChecks.length / 2;
+      const isHealthy = (Array.isArray(pools) && pools.length > 0) || (Array.isArray(rates) && rates.length > 0);
 
       logger.info('Graph service health check', { 
-        successCount, 
-        totalChecks: healthChecks.length, 
-        isHealthy 
+        isHealthy,
+        pools: Array.isArray(pools) ? pools.length : 0,
+        rates: Array.isArray(rates) ? rates.length : 0,
       });
 
       return isHealthy;

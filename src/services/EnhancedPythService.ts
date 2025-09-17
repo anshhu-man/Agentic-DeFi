@@ -41,24 +41,24 @@ export class EnhancedPythService {
   };
   
   constructor() {
-    this.hermesEndpoint = 'https://hermes.pyth.network';
+    this.hermesEndpoint = config.pyth.endpoint;
     this.initializeProviders();
     
     logger.info('Enhanced Pyth Service initialized with Pull Oracle support');
   }
   
   private initializeProviders(): void {
-    // Initialize providers for different chains
+    // Initialize providers for different chains (use configured RPC URLs)
     this.providers.set(1, new ethers.providers.JsonRpcProvider(
-      `https://eth-mainnet.g.alchemy.com/v2/${config.apiKeys.alchemy}`
+      config.blockchain.chains.ethereum.rpcUrl
     ));
     
     this.providers.set(137, new ethers.providers.JsonRpcProvider(
-      `https://polygon-mainnet.g.alchemy.com/v2/${config.apiKeys.alchemy}`
+      config.blockchain.chains.polygon.rpcUrl
     ));
     
     this.providers.set(30, new ethers.providers.JsonRpcProvider(
-      'https://public-node.rsk.co'
+      config.blockchain.chains.rootstock.rpcUrl
     ));
   }
   

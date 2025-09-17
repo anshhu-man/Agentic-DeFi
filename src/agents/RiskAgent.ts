@@ -1,20 +1,17 @@
-import { logger } from '@/utils/logger';
-import { cache } from '@/utils/redis';
-import AlchemyService from '@/services/AlchemyService';
-import PythService from '@/services/PythService';
+import { logger } from '../utils/logger';
+import { cache } from '../utils/redis';
+import PythService from '../services/PythService';
 import { 
   RiskAnalysis, 
   TokenBalance, 
   DeFiPosition,
   AgentTask 
-} from '@/types';
+} from '../types';
 
 export class RiskAgent {
-  private alchemyService: AlchemyService;
   private pythService: PythService;
 
-  constructor(alchemyService: AlchemyService, pythService: PythService) {
-    this.alchemyService = alchemyService;
+  constructor(pythService: PythService) {
     this.pythService = pythService;
   }
 
@@ -81,8 +78,8 @@ export class RiskAgent {
         return cached;
       }
 
-      // Get user's portfolio across chains
-      const portfolioBalances = await this.alchemyService.getMultiChainBalances(userAddress);
+      // Get user's portfolio across chains (placeholder - integrate real source)
+      const portfolioBalances = new Map<number, TokenBalance[]>();
       
       // Calculate overall risk metrics
       const liquidationRisk = await this.calculateLiquidationRisk(portfolioBalances);
@@ -136,11 +133,7 @@ export class RiskAgent {
     }
   }
 
-  async monitorLiquidationRisk(params: {
-    userAddress: string;
-    protocols?: string[];
-    threshold?: number;
-  }): Promise<Array<{
+  async monitorLiquidationRisk(params: any): Promise<Array<{
     protocol: string;
     position: string;
     healthFactor: string;
@@ -199,17 +192,7 @@ export class RiskAgent {
     }
   }
 
-  async calculateImpermanentLoss(params: {
-    lpPositions: Array<{
-      protocol: string;
-      pair: string;
-      entryPrice0: string;
-      entryPrice1: string;
-      currentPrice0: string;
-      currentPrice1: string;
-      amount: string;
-    }>;
-  }): Promise<Array<{
+  async calculateImpermanentLoss(params: any): Promise<Array<{
     protocol: string;
     pair: string;
     currentIL: string;
@@ -262,9 +245,7 @@ export class RiskAgent {
     }
   }
 
-  async assessConcentrationRisk(params: {
-    portfolio: Map<number, TokenBalance[]>;
-  }): Promise<{
+  async assessConcentrationRisk(params: any): Promise<{
     topHoldings: Array<{
       symbol: string;
       percentage: string;
@@ -274,7 +255,7 @@ export class RiskAgent {
     recommendations: string[];
   }> {
     try {
-      const { portfolio } = params;
+      const { portfolio = new Map<number, TokenBalance[]>() } = params || {};
       
       // Calculate total portfolio value
       let totalValue = 0;

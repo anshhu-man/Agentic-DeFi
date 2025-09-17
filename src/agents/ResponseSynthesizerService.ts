@@ -1,15 +1,12 @@
-import OpenAI from 'openai';
-import { config } from '@/config';
-import { logger } from '@/utils/logger';
-import { AgentResult, UnifiedResponse } from '@/types';
+import MistralService from '../services/MistralService';
+import { logger } from '../utils/logger';
+import { AgentResult, UnifiedResponse } from '../types';
 
 export class ResponseSynthesizerService {
-  private openai: OpenAI;
+  private mistral: MistralService;
 
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: config.apiKeys.openai,
-    });
+    this.mistral = new MistralService();
   }
 
   async synthesizeResponse(agentResults: AgentResult[]): Promise<UnifiedResponse> {
@@ -112,18 +109,13 @@ ${results.map(r => `${r.agentType}: ${r.success ? 'Success' : 'Failed'}`).join('
 Create a summary that helps the user understand what was found and what they should know.
 `;
 
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-5',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 200,
-      });
-
-      const summary = completion.choices[0]?.message?.content || 
-        this.generateFallbackSummary(results, intent);
+      const summary =
+        (await this.mistral.chatComplete({
+          system: systemPrompt,
+          user: userPrompt,
+          temperature: 0.3,
+          maxTokens: 200,
+        })) || this.generateFallbackSummary(results, intent);
 
       return summary;
     } catch (error) {
@@ -283,13 +275,13 @@ Create a summary that helps the user understand what was found and what they sho
 
       case 'risk_analysis':
         const riskResult = results.find(r => r.agentType === 'risk' && r.success);
-        if (riskResult?.data?.overallRiskScore > 7) {
+        if ((riskResult?.data?.overallRiskScore ?? 0) > 7) {
           actions?.push({
             type: 'rebalance',
             label: 'Rebalance Portfolio',
             description: 'Reduce risk by diversifying your holdings',
             parameters: {
-              currentRisk: riskResult.data.overallRiskScore,
+              currentRisk: (riskResult?.data?.overallRiskScore ?? 0),
               targetRisk: 5,
             },
           });

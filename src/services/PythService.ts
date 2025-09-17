@@ -1,8 +1,8 @@
 import axios from 'axios';
-import { config, PRICE_FEED_IDS } from '@/config';
-import { logger } from '@/utils/logger';
-import { cache } from '@/utils/redis';
-import { PriceData, PythPriceData } from '@/types';
+import { config, PRICE_FEED_IDS } from '../config';
+import { logger } from '../utils/logger';
+import { cache } from '../utils/redis';
+import { PriceData, PythPriceData } from '../types';
 
 export class PythService {
   private baseUrl: string;
