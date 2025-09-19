@@ -7,8 +7,6 @@ import { createServer } from 'http';
 
 import { config } from './config';
 import { logger } from './utils/logger';
-import { connectRedis } from './utils/redis';
-import { prisma } from './utils/database';
 
 // Import services
 import PythService from './services/PythService';
@@ -125,18 +123,14 @@ class AgenticExplorerServer {
     this.app.get('/health', async (req, res) => {
       try {
         // Check individual services
-        const databaseHealthy = await this.checkDatabaseHealth();
-        const redisHealthy = await this.checkRedisHealth();
         const pythHealthy = await this.checkPythHealth();
         const graphHealthy = config.graph?.disabled ? true : await this.checkGraphHealth();
 
         // Build response object
         const healthStatus = {
-          status: (databaseHealthy && redisHealthy && pythHealthy) ? 'healthy' : 'unhealthy',
+          status: (pythHealthy) ? 'healthy' : 'unhealthy',
           timestamp: new Date().toISOString(),
           services: {
-            database: databaseHealthy,
-            redis: redisHealthy,
             pyth: pythHealthy,
             graph: graphHealthy,
             aiModel: process.env.MISTRAL_MODEL || 'mistral-medium',
@@ -144,7 +138,7 @@ class AgenticExplorerServer {
         };
 
         // Only require core services (DB, Redis, Pyth) for overall health
-        const allHealthy = databaseHealthy && redisHealthy && pythHealthy;
+        const allHealthy = pythHealthy;
         
         res.status(allHealthy ? 200 : 503).json(healthStatus);
       } catch (error) {
@@ -322,23 +316,7 @@ class AgenticExplorerServer {
   }
 
   // Health check methods
-  private async checkDatabaseHealth(): Promise<boolean> {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      return true;
-    } catch {
-      return false;
-    }
-  }
 
-  private async checkRedisHealth(): Promise<boolean> {
-    try {
-      // This will be implemented when we have redis client
-      return true;
-    } catch {
-      return false;
-    }
-  }
 
 
   private async checkPythHealth(): Promise<boolean> {
@@ -359,13 +337,6 @@ class AgenticExplorerServer {
 
   public async start(): Promise<void> {
     try {
-      // Connect to Redis
-      await connectRedis();
-      
-      // Connect to database
-      await prisma.$connect();
-      logger.info('Database connected successfully');
-      
       // Start server
       this.server.listen(config.server.port, () => {
         logger.info(`🚀 Agentic Meta-Protocol Explorer Backend started`, {
@@ -383,7 +354,6 @@ class AgenticExplorerServer {
 
   public async stop(): Promise<void> {
     try {
-      await prisma.$disconnect();
       this.server.close();
       logger.info('Server stopped successfully');
     } catch (error) {

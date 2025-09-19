@@ -55,44 +55,25 @@ router.get("/price", async (req: Request, res: Response) => {
       });
     }
 
-    // Use Hermes latest_price_feeds directly to include confidence and publish_time
-    const url = `${config.pyth.endpoint}/api/latest_price_feeds`;
-    const hermesResp = await axios.get(url, {
-      params: { ids: [feedId] },
-      timeout: 10000,
-    });
+    // Use service (Hermes v2 updates/price/latest under the hood)
+    const prices = await pythService.getRealTimePrices([symbol]);
+    const item = prices.find((p) => p.symbol === symbol);
 
-    if (!Array.isArray(hermesResp.data) || hermesResp.data.length === 0) {
+    if (!item) {
       return res.status(502).json({
         success: false,
         error: "No data from Pyth Hermes",
       });
     }
 
-    const feed = hermesResp.data[0];
-    const priceObj = feed?.price;
-    const conf = priceObj?.conf;
-    const price = priceObj?.price;
-    const expo = priceObj?.expo;
-    const publishTime = priceObj?.publish_time;
-
-    const value =
-      typeof price === "string" || typeof price === "number"
-        ? Number(price) * Math.pow(10, expo || 0)
-        : null;
-    const confidence =
-      typeof conf === "string" || typeof conf === "number"
-        ? Number(conf) * Math.pow(10, expo || 0)
-        : null;
-
     return res.json({
       success: true,
       data: {
         symbol,
         feedId,
-        price: value,
-        confidence,
-        publishTime: publishTime ? new Date(publishTime * 1000).toISOString() : null,
+        price: Number(item.price),
+        confidence: null,
+        publishTime: item.timestamp ? new Date(item.timestamp).toISOString() : null,
       },
     });
   } catch (error: any) {
@@ -128,12 +109,10 @@ router.get("/price-update", async (req: Request, res: Response) => {
       });
     }
 
-    const url = `${config.pyth.endpoint}/v2/updates/price/latest`;
-    const hermesResp = await axios.get(url, {
-      params: {
-        ids: [feedId],
-        encoding,
-      },
+    const u = new URL(`${config.pyth.endpoint}/v2/updates/price/latest`);
+    u.searchParams.append('ids[]', feedId);
+    u.searchParams.append('encoding', encoding);
+    const hermesResp = await axios.get(u.toString(), {
       timeout: 15000,
     });
 
@@ -202,13 +181,14 @@ router.get("/prices", async (req: Request, res: Response) => {
       });
     }
 
-    const prices = await pythService.getRealTimePrices(symbols);
+    // Fetch via Hermes SDK through service to avoid cluster-specific HTTP quirks
+    const priceData = await pythService.getRealTimePrices(symbols);
 
-    const data = prices.map((p) => ({
-      symbol: p.symbol,
-      price: Number(p.price),
-      confidence: null as number | null, // Hermes confidence not exposed here; available via /price if needed
-      publishTime: p.timestamp ? new Date(p.timestamp).toISOString() : null,
+    const data = priceData.map((item) => ({
+      symbol: item.symbol,
+      price: Number(item.price),
+      confidence: null,
+      publishTime: item.timestamp ? new Date(item.timestamp).toISOString() : null,
     }));
 
     return res.json({
@@ -222,6 +202,127 @@ router.get("/prices", async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       error: "PYTH_BATCH_PRICES_FAILED",
+      details: error?.message || "Unknown error",
+    });
+  }
+});
+
+/**
+ * GET /api/pyth/volatility?symbol=ETH/USD&period=24
+ * Returns volatility (%) computed from historical prices for the given symbol.
+ */
+router.get("/volatility", async (req: Request, res: Response) => {
+  try {
+    const symbol = (req.query.symbol as string) || "ETH/USD";
+    const period = Number(req.query.period || 24);
+    const feedId = resolveFeedId(symbol);
+    if (!feedId) {
+      return res.status(400).json({
+        success: false,
+        error: `Unknown or unsupported symbol: ${symbol}`,
+      });
+    }
+
+    const volatility = await pythService.calculateVolatility(symbol, period);
+    return res.json({
+      success: true,
+      data: { symbol, period, volatility },
+    });
+  } catch (error: any) {
+    logger.error("Pyth volatility endpoint failed", {
+      error: error?.message || error,
+    });
+    return res.status(500).json({
+      success: false,
+      error: "PYTH_VOLATILITY_FAILED",
+      details: error?.message || "Unknown error",
+    });
+  }
+});
+
+/**
+ * GET /api/pyth/volatilities?symbols=ETH/USD,BTC/USD&period=24
+ * Batch volatility (%) for multiple symbols.
+ */
+router.get("/volatilities", async (req: Request, res: Response) => {
+  try {
+    const symbolsParam = (req.query.symbols as string) || "";
+    const period = Number(req.query.period || 24);
+    const symbols = symbolsParam
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (symbols.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "No symbols provided. Use symbols=ETH/USD,BTC/USD",
+      });
+    }
+
+    const results = await Promise.all(
+      symbols.map(async (symbol) => {
+        try {
+          const feedId = resolveFeedId(symbol);
+          if (!feedId) {
+            return { symbol, error: "UNSUPPORTED_SYMBOL" };
+          }
+          const vol = await pythService.calculateVolatility(symbol, period);
+          return { symbol, volatility: vol };
+        } catch (e: any) {
+          return { symbol, error: e?.message || "FAILED" };
+        }
+      })
+    );
+
+    return res.json({
+      success: true,
+      data: results,
+      period,
+    });
+  } catch (error: any) {
+    logger.error("Pyth volatilities endpoint failed", {
+      error: error?.message || error,
+    });
+    return res.status(500).json({
+      success: false,
+      error: "PYTH_VOLATILITIES_FAILED",
+      details: error?.message || "Unknown error",
+    });
+  }
+});
+
+/**
+ * GET /api/pyth/correlation?symbol1=ETH/USD&symbol2=BTC/USD&period=30
+ * Returns correlation between two symbols over the requested period.
+ */
+router.get("/correlation", async (req: Request, res: Response) => {
+  try {
+    const symbol1 = (req.query.symbol1 as string) || "ETH/USD";
+    const symbol2 = (req.query.symbol2 as string) || "BTC/USD";
+    const period = Number(req.query.period || 30);
+
+    const id1 = resolveFeedId(symbol1);
+    const id2 = resolveFeedId(symbol2);
+    if (!id1 || !id2) {
+      return res.status(400).json({
+        success: false,
+        error: `Unsupported symbols: ${!id1 ? symbol1 : ""} ${!id2 ? symbol2 : ""}`.trim(),
+      });
+    }
+
+    const correlation = await pythService.getPriceCorrelation(symbol1, symbol2, period);
+    return res.json({
+      success: true,
+      data: { symbol1, symbol2, period, correlation },
+    });
+  } catch (error: any) {
+    logger.error("Pyth correlation endpoint failed", {
+      error: error?.message || error,
+    });
+    return res.status(500).json({
+      success: false,
+      error: "PYTH_CORRELATION_FAILED",
       details: error?.message || "Unknown error",
     });
   }

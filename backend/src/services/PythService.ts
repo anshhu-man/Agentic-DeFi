@@ -1,15 +1,18 @@
 import axios from 'axios';
+import { HermesClient } from '@pythnetwork/hermes-client';
 import { config, PRICE_FEED_IDS } from '../config';
 import { logger } from '../utils/logger';
-import { cache } from '../utils/redis';
+import { cache } from '../utils/cache';
 import { PriceData, PythPriceData } from '../types';
 
 export class PythService {
   private baseUrl: string;
   private priceFeeds: Map<string, string> = new Map();
+  private hermes!: HermesClient;
 
   constructor() {
     this.baseUrl = config.pyth.endpoint;
+    this.hermes = new HermesClient(this.baseUrl);
     this.initializePriceFeeds();
   }
 
@@ -34,18 +37,28 @@ export class PythService {
         return [];
       }
 
-      const response = await axios.get(`${this.baseUrl}/api/latest_price_feeds`, {
-        params: {
-          ids: feedIds,
-        },
-        timeout: 10000,
-      });
+      const response = await this.hermes.getLatestPriceUpdates(feedIds, { parsed: true });
 
       const priceData: PriceData[] = [];
 
-      for (const feed of response.data) {
+      const feeds = Array.isArray((response as any)?.parsed)
+        ? (response as any).parsed
+        : Array.isArray((response as any)?.updates)
+        ? (response as any).updates
+        : Array.isArray(response as any)
+        ? (response as any)
+        : [];
+      logger.info('Pyth Hermes response received', {
+        requestedIds: feedIds,
+        parsedCount: Array.isArray(feeds) ? feeds.length : null,
+      });
+      for (const feed of feeds) {
         const symbol = this.getFeedSymbol(feed.id);
-        if (symbol && feed.price) {
+        if (!symbol) {
+          logger.warn('Pyth feed id not mapped to symbol', { feedId: feed.id });
+          continue;
+        }
+        if (feed.price) {
           const price = this.formatPrice(feed.price.price, feed.price.expo);
           const change24h = '0'; // Pyth doesn't provide 24h change directly
           
@@ -69,9 +82,109 @@ export class PythService {
         }
       }
 
-      logger.info('Retrieved real-time prices', { 
+      // Fallback: if SDK returned no feeds, try legacy Hermes v1 latest_price_feeds
+      if (priceData.length === 0) {
+        try {
+          // Attempt 1: ids[] repeated params
+          const u1 = new URL(`${this.baseUrl}/api/latest_price_feeds`);
+          for (const id of feedIds) {
+            u1.searchParams.append('ids[]', id);
+          }
+          const resp1 = await axios.get(u1.toString(), {
+            timeout: 10000,
+            headers: { Accept: 'application/json' },
+          });
+          const arr1: any[] = Array.isArray(resp1.data)
+            ? resp1.data
+            : Array.isArray(resp1.data?.data)
+            ? resp1.data.data
+            : [];
+
+          for (const feed of arr1) {
+            const symbol = this.getFeedSymbol(feed.id);
+            if (!symbol || !feed?.price) continue;
+
+            const price = this.formatPrice(feed.price.price, feed.price.expo);
+            priceData.push({
+              symbol,
+              price,
+              change24h: '0',
+              volume24h: '0',
+              timestamp: new Date(
+                (feed.price.publish_time || Math.floor(Date.now() / 1000)) * 1000
+              ),
+            });
+
+            // cache 30s
+            const cacheKey = cache.keys.priceData(symbol);
+            await cache.set(
+              cacheKey,
+              {
+                symbol,
+                price,
+                change24h: '0',
+                volume24h: '0',
+                timestamp: new Date(),
+              },
+              30
+            );
+          }
+
+          // Attempt 2: if still empty, try ids as a single non-array param
+          if (priceData.length === 0) {
+            const resp2 = await axios.get(`${this.baseUrl}/api/latest_price_feeds`, {
+              params: { ids: feedIds },
+              timeout: 10000,
+              headers: { Accept: 'application/json' },
+            });
+            const arr2: any[] = Array.isArray(resp2.data)
+              ? resp2.data
+              : Array.isArray(resp2.data?.data)
+              ? resp2.data.data
+              : [];
+
+            for (const feed of arr2) {
+              const symbol = this.getFeedSymbol(feed.id);
+              if (!symbol || !feed?.price) continue;
+
+              const price = this.formatPrice(feed.price.price, feed.price.expo);
+              priceData.push({
+                symbol,
+                price,
+                change24h: '0',
+                volume24h: '0',
+                timestamp: new Date(
+                  (feed.price.publish_time || Math.floor(Date.now() / 1000)) * 1000
+                ),
+              });
+
+              const cacheKey = cache.keys.priceData(symbol);
+              await cache.set(
+                cacheKey,
+                {
+                  symbol,
+                  price,
+                  change24h: '0',
+                  volume24h: '0',
+                  timestamp: new Date(),
+                },
+                30
+              );
+            }
+          }
+        } catch (fallbackErr) {
+          logger.warn('Hermes v1 latest_price_feeds fallback failed', {
+            error:
+              (fallbackErr as any)?.response?.status ||
+              (fallbackErr as any)?.message ||
+              'unknown',
+          });
+        }
+      }
+
+      logger.info('Retrieved real-time prices', {
         symbolCount: symbols.length,
-        priceCount: priceData.length 
+        priceCount: priceData.length,
       });
 
       return priceData;
@@ -107,19 +220,156 @@ export class PythService {
       const endTime = Math.floor(Date.now() / 1000);
       const startTime = this.calculateStartTime(endTime, timeframe, limit);
 
-      const response = await axios.get(`${this.baseUrl}/api/get_price_feed`, {
-        params: {
-          id: feedId,
-          start_time: startTime,
-          end_time: endTime,
-        },
-        timeout: 15000,
-      });
+      const historyBase = (config as any).pyth?.history?.endpoint || this.baseUrl;
+      const historyHeaders = this.buildHistoryHeaders();
 
-      const historicalData = response.data.map((item: any) => ({
-        timestamp: new Date(item.publish_time * 1000),
-        price: this.formatPrice(item.price, item.expo),
-      }));
+      // Try Hermes v2 time-series endpoints with multiple param variants
+      const id0x = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
+      const idNo0x = id0x.replace(/^0x/, '');
+
+      type Candidate = { url: string; params: Record<string, any> };
+      const candidates: Candidate[] = [
+        {
+          url: `${historyBase}/v2/updates/price/history`,
+          params: { 'ids[]': id0x, from_time: startTime, to_time: endTime, parsed: true },
+        },
+        {
+          url: `${historyBase}/v2/updates/price/history`,
+          params: { 'ids[]': id0x, start_time: startTime, end_time: endTime, parsed: true },
+        },
+        {
+          url: `${historyBase}/v2/updates/price/history`,
+          params: { ids: id0x, from_time: startTime, to_time: endTime, parsed: true },
+        },
+        {
+          url: `${historyBase}/v2/updates/price/history`,
+          params: { 'ids[]': `0x${idNo0x}`, from_time: startTime, to_time: endTime, parsed: true },
+        },
+      ];
+
+      let parsed: any[] = [];
+      let lastErr: any = null;
+
+      for (const c of candidates) {
+        try {
+          const resp = await axios.get(c.url, {
+            params: c.params,
+            timeout: 15000,
+            headers: historyHeaders,
+          });
+
+          parsed = Array.isArray((resp.data as any)?.parsed)
+            ? (resp.data as any).parsed
+            : Array.isArray((resp.data as any)?.updates)
+            ? (resp.data as any).updates
+            : Array.isArray(resp.data)
+            ? (resp.data as any)
+            : [];
+
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            logger.info('Historical v2 fetch succeeded', {
+              symbol,
+              url: c.url,
+              params: Object.keys(c.params),
+              points: parsed.length,
+            });
+            break;
+          }
+        } catch (e: any) {
+          lastErr = e?.response?.status || e?.message || 'unknown';
+          continue;
+        }
+      }
+
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        // Try POST variants to v2 history
+        const postBodies: any[] = [
+          { ids: [id0x], from_time: startTime, to_time: endTime, parsed: true },
+          { ids: [id0x], start_time: startTime, end_time: endTime, parsed: true },
+          { ids: id0x, from_time: startTime, to_time: endTime, parsed: true },
+          { ids: [`0x${idNo0x}`], from_time: startTime, to_time: endTime, parsed: true },
+        ];
+        for (const body of postBodies) {
+          try {
+            const resp = await axios.post(`${historyBase}/v2/updates/price/history`, body, {
+              timeout: 15000,
+              headers: historyHeaders,
+            });
+            parsed = Array.isArray((resp.data as any)?.parsed)
+              ? (resp.data as any).parsed
+              : Array.isArray((resp.data as any)?.updates)
+              ? (resp.data as any).updates
+              : Array.isArray(resp.data)
+              ? (resp.data as any)
+              : [];
+
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              logger.info('Historical v2 POST fetch succeeded', {
+                symbol,
+                keys: Object.keys(body),
+                points: parsed.length,
+              });
+              break;
+            }
+          } catch (e: any) {
+            lastErr = e?.response?.status || e?.message || 'unknown';
+            continue;
+          }
+        }
+      }
+
+      // TradingView shim fallback if still empty
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        try {
+          const tfToRes: Record<string, number> = { '1m': 1, '5m': 5, '15m': 15, '1h': 60, '4h': 240, '1d': 1440 };
+          const resolution = tfToRes[timeframe] ?? 60;
+
+          const tryShim = async (symParam: string) => {
+            const shimResp = await axios.get(`${historyBase}/v2/shims/tradingview/history`, {
+              params: { symbol: symParam, resolution, from: startTime, to: endTime },
+              timeout: 15000,
+              headers: historyHeaders,
+            });
+            return shimResp.data;
+          };
+
+          let sh = await tryShim(id0x);
+          if (!(sh && sh.s === 'ok' && Array.isArray(sh.t) && Array.isArray(sh.c) && sh.t.length > 0)) {
+            sh = await tryShim(idNo0x);
+          }
+
+          if (sh && sh.s === 'ok' && Array.isArray(sh.t) && Array.isArray(sh.c) && sh.t.length > 0) {
+            const historicalData = sh.t.map((ts: number, i: number) => ({
+              timestamp: new Date(ts * 1000),
+              price: String(sh.c[i]),
+            }));
+            logger.info('Historical TradingView shim fetch succeeded', {
+              symbol,
+              points: historicalData.length,
+              resolution,
+            });
+            return historicalData;
+          }
+        } catch (e: any) {
+          lastErr = e?.response?.status || e?.message || 'unknown';
+        }
+      }
+
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error(`PYTH_V2_HISTORY_FAILED: ${lastErr || 'no data'}`);
+      }
+
+      const historicalData = parsed.map((item: any) => {
+        const p = item?.price ?? item;
+        const ts = p?.publish_time ?? item?.publish_time;
+        const pr = p?.price ?? item?.price;
+        const ex = p?.expo ?? item?.expo ?? 0;
+
+        return {
+          timestamp: typeof ts === 'number' ? new Date(ts * 1000) : new Date(),
+          price: this.formatPrice(String(pr), Number(ex)),
+        };
+      });
 
       logger.info('Retrieved historical prices', { 
         symbol, 
@@ -232,8 +482,10 @@ export class PythService {
   }
 
   private getFeedSymbol(feedId: string): string | null {
+    const norm = feedId.toLowerCase().replace(/^0x/, '');
     for (const [symbol, id] of this.priceFeeds) {
-      if (id === feedId) {
+      const normId = id.toLowerCase().replace(/^0x/, '');
+      if (normId === norm) {
         return symbol;
       }
     }
@@ -271,14 +523,19 @@ export class PythService {
     }
   }
 
+  private buildHistoryHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    const h = (config as any).pyth?.history?.apiKeyHeader;
+    const k = (config as any).pyth?.history?.apiKey;
+    if (h && k) headers[h] = k;
+    return headers;
+  }
+
   async isHealthy(): Promise<boolean> {
     try {
-      const response = await axios.get(`${this.baseUrl}/api/latest_price_feeds`, {
-        params: { ids: [PRICE_FEED_IDS['ETH/USD']] },
-        timeout: 5000,
-      });
-      
-      return response.status === 200 && response.data.length > 0;
+      const response = await this.hermes.getLatestPriceUpdates([PRICE_FEED_IDS['ETH/USD']]);
+      const feeds = (response as any)?.parsed || [];
+      return Array.isArray(feeds) && feeds.length > 0;
     } catch (error) {
       logger.error('Pyth service health check failed', { error });
       return false;

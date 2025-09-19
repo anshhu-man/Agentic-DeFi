@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { ethers } from 'ethers';
 import { logger } from '@/utils/logger';
-import { cache } from '@/utils/redis';
+import { cache } from '@/utils/cache';
 import { config, PRICE_FEED_IDS } from '@/config';
 
 export interface PythPriceData {

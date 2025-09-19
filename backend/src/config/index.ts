@@ -8,12 +8,6 @@ export const config = {
     nodeEnv: process.env.NODE_ENV || 'development',
     wsPort: parseInt(process.env.WS_PORT || '3001'),
   },
-  database: {
-    url: process.env.DATABASE_URL || '',
-  },
-  redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
-  },
   apiKeys: {
     graph: process.env.GRAPH_API_KEY || '',
     mistral: process.env.MISTRAL_API_KEY || '',
@@ -60,10 +54,14 @@ export const config = {
   },
   pyth: {
     endpoint: process.env.PYTH_NETWORK_ENDPOINT || 'https://hermes.pyth.network',
-  },
-  jwt: {
-    secret: process.env.JWT_SECRET || 'your-secret-key',
-    expiresIn: '24h',
+    history: {
+      endpoint:
+        process.env.PYTH_HISTORY_ENDPOINT ||
+        process.env.PYTH_NETWORK_ENDPOINT ||
+        'https://hermes.pyth.network',
+      apiKeyHeader: process.env.PYTH_HISTORY_API_KEY_HEADER || '',
+      apiKey: process.env.PYTH_HISTORY_API_KEY || '',
+    },
   },
   subgraphs: {
     uniswap: process.env.UNISWAP_SUBGRAPH_URL || 'https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3',

@@ -1,5 +1,5 @@
 import { logger } from '@/utils/logger';
-import { cache } from '@/utils/redis';
+import { cache } from '@/utils/cache';
 import { PRICE_FEED_IDS } from '@/config';
 import EnhancedPythService, { 
   YieldCalculationResult, 
