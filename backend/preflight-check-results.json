@@ -1,0 +1,39 @@
+{
+  "timestamp": "2025-09-20T10:49:16.457Z",
+  "allChecksPass": true,
+  "summary": {
+    "passed": 6,
+    "failed": 0,
+    "warned": 0,
+    "skipped": 0
+  },
+  "results": [
+    {
+      "check": "MISTRAL_API_KEY",
+      "status": "PASS"
+    },
+    {
+      "check": "axios",
+      "status": "PASS"
+    },
+    {
+      "check": "dotenv",
+      "status": "PASS"
+    },
+    {
+      "check": "Pyth Network",
+      "status": "PASS",
+      "data": {
+        "ethPrice": "4470.31"
+      }
+    },
+    {
+      "check": "Mistral API",
+      "status": "PASS"
+    },
+    {
+      "check": "Port 3001",
+      "status": "PASS"
+    }
+  ]
+}
