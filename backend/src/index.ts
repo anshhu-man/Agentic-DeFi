@@ -25,6 +25,7 @@ import portfolioController from './controllers/portfolioController';
 import alertController from './controllers/alertController';
 import pythController from './controllers/pythController';
 import chatController from './controllers/chatController';
+import enhancedChatController from './controllers/enhancedChatController';
 
 class AgenticExplorerServer {
   private app: express.Application;
@@ -157,6 +158,7 @@ class AgenticExplorerServer {
     this.app.use('/api/alerts', alertController);
     this.app.use('/api/pyth', pythController);
     this.app.use('/api/chat', chatController);
+    this.app.use('/api/chat', enhancedChatController);
 
     // Main query endpoint
     this.app.post('/api/query', async (req, res) => {
