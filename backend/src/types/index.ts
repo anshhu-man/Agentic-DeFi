@@ -10,6 +10,18 @@ export interface ChainConfig {
   blockExplorer: string;
 }
 
+export interface NetworkConfig {
+  chainId: number;
+  name: string;
+  rpcUrl: string;
+  blockExplorer: string;
+  nativeCurrency: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+}
+
 export interface TokenBalance {
   address: string;
   symbol: string;
@@ -318,4 +330,104 @@ export interface GovernanceActivity {
   vote: 'for' | 'against' | 'abstain';
   votingPower: string;
   timestamp: Date;
+}
+
+// 1inch Service Types
+export interface TokenData {
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  logoURI?: string;
+}
+
+export interface SwapParams {
+  fromTokenAddress: string;
+  toTokenAddress: string;
+  amount: string;
+  fromAddress: string;
+  slippage?: number;
+  disableEstimate?: boolean;
+}
+
+export interface SwapResult {
+  estimatedGas: string;
+  toTokenAmount: string;
+  route: any[];
+  price: number;
+}
+
+export interface ApprovalData {
+  allowance: string;
+  isApproved: boolean;
+}
+
+export interface TransactionDetails {
+  action: string;
+  fromToken: string;
+  toToken: string;
+  fromAmount: string;
+  expectedToAmount: string;
+  minToAmount: string;
+  estimatedGas: string;
+  estimatedGasCost: string;
+  route: any[];
+  priceImpact: number;
+  chainId: number;
+  networkName: string;
+}
+
+export interface ActionPlan {
+  actions: any[];
+  estimatedGasCost?: string;
+  riskLevel?: string;
+  expectedOutcome?: string;
+  [key: string]: any;
+}
+
+export interface MultiStepPlan {
+  steps: ActionPlan[];
+  dependencies: Record<string, string[]>;
+}
+
+export interface ExecutionGraph {
+  nodes: any[];
+  edges: any[];
+}
+
+export interface OptimizedActions {
+  actions: any[];
+  gasEstimate: string;
+  executionOrder: number[];
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface SimulationResult {
+  success: boolean;
+  expectedOutcome: any;
+  potentialIssues: string[];
+  gasUsed: string;
+}
+
+export interface OrchestrationRequest {
+  intent: string;
+  userAddress: string;
+  mode: 'analyze_only' | 'execute_with_approval' | 'autonomous';
+  marketContext: any;
+  constraints?: Record<string, any>;
+}
+
+export interface OrchestrationResponse {
+  status: string;
+  actionPlan?: ActionPlan;
+  network?: any;
+  estimatedGasCosts?: string;
+  riskAssessment?: any;
+  actions?: any[];
+  [key: string]: any;
 }

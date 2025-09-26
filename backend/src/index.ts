@@ -7,6 +7,8 @@ import { createServer } from 'http';
 
 import { config } from './config';
 import { logger } from './utils/logger';
+import { prisma } from './utils/database';
+import { connectRedis } from './utils/redis';
 
 // Import services
 import PythService from './services/PythService';
@@ -25,6 +27,7 @@ import portfolioController from './controllers/portfolioController';
 import alertController from './controllers/alertController';
 import pythController from './controllers/pythController';
 import chatController from './controllers/chatController';
+import enhancedChatController from './controllers/enhancedChatController';
 
 class AgenticExplorerServer {
   private app: express.Application;
@@ -123,22 +126,24 @@ class AgenticExplorerServer {
     this.app.get('/health', async (req, res) => {
       try {
         // Check individual services
+        const databaseHealthy = await this.checkDatabaseHealth();
         const pythHealthy = await this.checkPythHealth();
         const graphHealthy = config.graph?.disabled ? true : await this.checkGraphHealth();
 
         // Build response object
         const healthStatus = {
-          status: (pythHealthy) ? 'healthy' : 'unhealthy',
+          status: (databaseHealthy && pythHealthy) ? 'healthy' : 'unhealthy', // Don't require Redis for health
           timestamp: new Date().toISOString(),
           services: {
+            database: databaseHealthy,
             pyth: pythHealthy,
             graph: graphHealthy,
             aiModel: process.env.MISTRAL_MODEL || 'mistral-medium',
           }
         };
 
-        // Only require core services (DB, Redis, Pyth) for overall health
-        const allHealthy = pythHealthy;
+        // Only require core services (DB, Pyth) for overall health - Redis is optional
+        const allHealthy = databaseHealthy && pythHealthy;
         
         res.status(allHealthy ? 200 : 503).json(healthStatus);
       } catch (error) {
@@ -157,6 +162,7 @@ class AgenticExplorerServer {
     this.app.use('/api/alerts', alertController);
     this.app.use('/api/pyth', pythController);
     this.app.use('/api/chat', chatController);
+    this.app.use('/api/chat', enhancedChatController);
 
     // Main query endpoint
     this.app.post('/api/query', async (req, res) => {
@@ -317,7 +323,23 @@ class AgenticExplorerServer {
 
   // Health check methods
 
+  private async checkDatabaseHealth(): Promise<boolean> {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
+  private async checkRedisHealth(): Promise<boolean> {
+    try {
+      // Return false since Redis is not available, but don't fail the server
+      return false;
+    } catch {
+      return false;
+    }
+  }
 
   private async checkPythHealth(): Promise<boolean> {
     try {
@@ -337,6 +359,18 @@ class AgenticExplorerServer {
 
   public async start(): Promise<void> {
     try {
+      // Try to connect to Redis, but don't fail if it's not available
+      try {
+        await connectRedis();
+        logger.info('Redis connected successfully');
+      } catch (redisError) {
+        logger.warn('Redis connection failed, continuing without Redis', { error: redisError });
+      }
+      
+      // Connect to database
+      await prisma.$connect();
+      logger.info('Database connected successfully');
+      
       // Start server
       this.server.listen(config.server.port, () => {
         logger.info(`🚀 Agentic Meta-Protocol Explorer Backend started`, {

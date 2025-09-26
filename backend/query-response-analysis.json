@@ -1,0 +1,107 @@
+{
+  "timestamp": "2025-09-20T11:00:33.862Z",
+  "pythData": [
+    {
+      "price": "4466.231520",
+      "confidence": "1.543165",
+      "timestamp": "2025-09-20T11:00:32.000Z",
+      "feedId": "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace"
+    },
+    {
+      "price": "115804.476245",
+      "confidence": "28.866245",
+      "timestamp": "2025-09-20T11:00:32.000Z",
+      "feedId": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
+    },
+    {
+      "price": "0.999781",
+      "confidence": "0.000765",
+      "timestamp": "2025-09-20T11:00:32.000Z",
+      "feedId": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+    }
+  ],
+  "queryTests": [
+    {
+      "query": "Find the highest APY for USDC staking across all protocols",
+      "expectedContext": "yield",
+      "responseTime": 4,
+      "success": false,
+      "error": "connect ECONNREFUSED ::1:3000",
+      "timestamp": "2025-09-20T11:00:34.373Z"
+    },
+    {
+      "query": "Compare yield farming returns between Aave and Compound for ETH",
+      "expectedContext": "yield",
+      "responseTime": 2,
+      "success": false,
+      "error": "connect ECONNREFUSED ::1:3000",
+      "timestamp": "2025-09-20T11:00:34.375Z"
+    },
+    {
+      "query": "What are the best liquidity mining opportunities right now?",
+      "expectedContext": "yield",
+      "responseTime": 3,
+      "success": false,
+      "error": "connect ECONNREFUSED ::1:3000",
+      "timestamp": "2025-09-20T11:00:34.379Z"
+    },
+    {
+      "query": "What's the current ETH price and its 24h volatility?",
+      "expectedContext": "price",
+      "responseTime": 3,
+      "success": false,
+      "error": "connect ECONNREFUSED ::1:3000",
+      "timestamp": "2025-09-20T11:00:34.382Z"
+    },
+    {
+      "query": "Show me BTC price trends and confidence intervals from Pyth Network",
+      "expectedContext": "price",
+      "responseTime": 2,
+      "success": false,
+      "error": "connect ECONNREFUSED ::1:3000",
+      "timestamp": "2025-09-20T11:00:34.385Z"
+    },
+    {
+      "query": "Compare current crypto prices with historical averages",
+      "expectedContext": "price",
+      "responseTime": 2,
+      "success": false,
+      "error": "connect ECONNREFUSED ::1:3000",
+      "timestamp": "2025-09-20T11:00:34.387Z"
+    },
+    {
+      "query": "Analyze liquidation risks in current DeFi positions",
+      "expectedContext": "risk",
+      "responseTime": 2,
+      "success": false,
+      "error": "connect ECONNREFUSED ::1:3000",
+      "timestamp": "2025-09-20T11:00:34.390Z"
+    },
+    {
+      "query": "What are the main risks of yield farming on Polygon network?",
+      "expectedContext": "risk",
+      "responseTime": 3,
+      "success": false,
+      "error": "connect ECONNREFUSED ::1:3000",
+      "timestamp": "2025-09-20T11:00:34.394Z"
+    },
+    {
+      "query": "Assess impermanent loss risks for ETH/USDC liquidity pools",
+      "expectedContext": "risk",
+      "responseTime": 2,
+      "success": false,
+      "error": "connect ECONNREFUSED ::1:3000",
+      "timestamp": "2025-09-20T11:00:34.396Z"
+    }
+  ],
+  "summary": {
+    "total": 9,
+    "successful": 0,
+    "failed": 9,
+    "responseQuality": {
+      "excellent": 0,
+      "good": 0,
+      "poor": 0
+    }
+  }
+}
