@@ -171,9 +171,11 @@ export class AgenticYieldAgent {
 
   private async gatherMarketContext(): Promise<MarketContext> {
     try {
-      // Get real-time market data
-      const ethPrice = await this.pythService.getTokenPrice('ETH/USD');
-      const btcPrice = await this.pythService.getTokenPrice('BTC/USD');
+      // Get real-time market data using the correct method
+      const priceMap = await this.pythService.getMultipleTokenPrices(['ETH', 'BTC'], 1);
+      
+      const ethPriceData = priceMap.get('ETH');
+      const btcPriceData = priceMap.get('BTC');
       
       // Calculate market volatility (simplified)
       const volatility = Math.random() * 20 + 10; // Mock volatility 10-30%
@@ -181,6 +183,13 @@ export class AgenticYieldAgent {
       // Assess market conditions
       const marketTrend = volatility > 25 ? 'bearish' : volatility < 15 ? 'bullish' : 'sideways';
       const liquidityConditions = volatility > 20 ? 'low' : 'high';
+
+      logger.info('Market context gathered', {
+        ethPrice: ethPriceData?.price,
+        btcPrice: btcPriceData?.price,
+        volatility,
+        marketTrend
+      });
 
       return {
         volatility,

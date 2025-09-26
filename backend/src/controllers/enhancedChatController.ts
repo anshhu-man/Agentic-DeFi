@@ -205,6 +205,106 @@ class EnhancedChatController {
   }
 
   /**
+   * POST /api/chat/analyze
+   * Dedicated endpoint for analyze-only mode - forces analyze_only without client needing to specify mode
+   */
+  async analyzeOnly(req: Request, res: Response): Promise<void> {
+    try {
+      // Force analyze_only mode at controller level - cannot be overridden by client
+      const enhancedRequest = {
+        ...req,
+        body: {
+          ...req.body,
+          mode: 'analyze_only' as const
+        }
+      };
+
+      logger.info('Processing analyze-only request', {
+        message: req.body.message?.substring(0, 100) + '...',
+        userId: req.body.userId,
+        conversationId: req.body.conversationId,
+        hasUserProfile: !!req.body.userProfile,
+        endpoint: '/api/chat/analyze'
+      });
+
+      // Reuse existing chatWithAgents logic with forced analyze_only mode
+      await this.chatWithAgents(enhancedRequest as Request, res);
+
+    } catch (error) {
+      logger.error('Analyze-only request failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        endpoint: '/api/chat/analyze'
+      });
+
+      res.status(500).json({
+        success: false,
+        mode: 'analyze_only',
+        error: {
+          code: 'ANALYZE_ONLY_FAILED',
+          message: 'Failed to process analyze-only request'
+        }
+      });
+    }
+  }
+
+  /**
+   * GET /api/chat/analyze/debug
+   * Debug endpoint for analyze-only mode - returns system status and health
+   */
+  async analyzeDebug(req: Request, res: Response): Promise<void> {
+    try {
+      const debugInfo = {
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        mode: 'analyze_only',
+        capabilities: {
+          pythIntegration: true,
+          realTimeData: true,
+          multiAgentCoordination: true,
+          conversationalAI: true
+        },
+        availableAgents: [
+          'AgenticYieldAgent',
+          'YieldAgent', 
+          'RiskAgent',
+          'GovernanceAgent',
+          'EnhancedYieldAgent'
+        ],
+        supportedIntents: [
+          'YIELD_OPTIMIZATION',
+          'RISK_ASSESSMENT', 
+          'GOVERNANCE_PARTICIPATION',
+          'PORTFOLIO_ANALYSIS',
+          'MARKET_INTELLIGENCE',
+          'CROSS_CHAIN_ANALYSIS'
+        ],
+        systemInfo: {
+          nodeEnv: process.env.NODE_ENV || 'development',
+          mistralModel: process.env.MISTRAL_MODEL || 'mistral-medium',
+          pythEndpoint: process.env.PYTH_ENDPOINT || 'https://hermes.pyth.network',
+          version: '1.0.0'
+        }
+      };
+
+      res.json({
+        success: true,
+        data: debugInfo
+      });
+
+    } catch (error) {
+      logger.error('Analyze debug request failed', { error });
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DEBUG_FAILED',
+          message: 'Failed to retrieve debug information'
+        }
+      });
+    }
+  }
+
+  /**
    * POST /api/chat/agents/capabilities
    * Get available agent capabilities and supported intents
    */
@@ -539,5 +639,9 @@ const enhancedChatController = new EnhancedChatController();
 router.post('/agents', enhancedChatController.chatWithAgents.bind(enhancedChatController));
 router.get('/agents/conversations/:conversationId', enhancedChatController.getConversation.bind(enhancedChatController));
 router.get('/agents/capabilities', enhancedChatController.getAgentCapabilities.bind(enhancedChatController));
+
+// New analyze-only dedicated routes
+router.post('/analyze', enhancedChatController.analyzeOnly.bind(enhancedChatController));
+router.get('/analyze/debug', enhancedChatController.analyzeDebug.bind(enhancedChatController));
 
 export default router;

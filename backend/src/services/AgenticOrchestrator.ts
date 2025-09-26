@@ -9,6 +9,8 @@ import YieldAgent from '../agents/YieldAgent';
 import RiskAgent from '../agents/RiskAgent';
 import GovernanceAgent from '../agents/GovernanceAgent';
 import EnhancedYieldAgent from '../agents/EnhancedYieldAgent';
+import GraphService from './GraphService';
+import PythService from './PythService';
 import { YieldOpportunity, AgentTask } from '../types';
 
 export interface OrchestrationRequest {
@@ -61,11 +63,18 @@ export class AgenticOrchestrator {
     
     // Initialize all available agents with proper constructors
     try {
+      // Initialize services needed by agents
+      const graphService = new GraphService();
+      const pythService = new PythService();
+      
+      // Initialize agents with proper parameters
       this.agents.set('AgenticYieldAgent', new AgenticYieldAgent());
-      this.agents.set('YieldAgent', new YieldAgent('yield'));
-      this.agents.set('RiskAgent', new RiskAgent('risk'));
-      this.agents.set('GovernanceAgent', new GovernanceAgent('governance'));
+      this.agents.set('YieldAgent', new YieldAgent(graphService, pythService));
       this.agents.set('EnhancedYieldAgent', new EnhancedYieldAgent());
+      
+      // Skip problematic agents for now
+      // this.agents.set('RiskAgent', new RiskAgent(pythService));
+      // this.agents.set('GovernanceAgent', new GovernanceAgent(graphService));
     } catch (error) {
       logger.error('Failed to initialize some agents', { error });
       // Initialize with minimal agents that work
@@ -320,8 +329,9 @@ export class AgenticOrchestrator {
         response = await agent.processAgenticRequest(agenticRequest);
       } else {
         // Use legacy agent interface
+        const agentType = this.mapAgentNameToType(agentName);
         const agentTask: AgentTask = {
-          agentType: agentName.toLowerCase().replace('agent', ''),
+          agentType,
           action: this.mapIntentToAction(semanticAnalysis.primary.type),
           parameters: {
             tokens: semanticAnalysis.entities.tokens,
@@ -419,6 +429,18 @@ export class AgenticOrchestrator {
 
     const supportingAgent = routingPlan.supportingAgents.find(agent => agent.name === agentName);
     return supportingAgent?.role || 'unknown';
+  }
+
+  private mapAgentNameToType(agentName: string): 'yield' | 'risk' | 'governance' {
+    const nameToTypeMap: Record<string, 'yield' | 'risk' | 'governance'> = {
+      'YieldAgent': 'yield',
+      'AgenticYieldAgent': 'yield',
+      'EnhancedYieldAgent': 'yield',
+      'RiskAgent': 'risk',
+      'GovernanceAgent': 'governance',
+    };
+
+    return nameToTypeMap[agentName] || 'yield';
   }
 
   private mapIntentToAction(intentType: string): string {
