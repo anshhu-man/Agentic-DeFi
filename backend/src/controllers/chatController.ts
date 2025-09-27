@@ -80,7 +80,7 @@ Provide concise, helpful answers and, when relevant, structured insights.`;
         system: systemPrompt,
         user: message,
         temperature: 0.3,
-        maxTokens: 600,
+        maxTokens: 250,
       })) || '';
 
     // Attempt persistence if we have a Supabase access token and userId

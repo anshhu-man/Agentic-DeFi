@@ -1,0 +1,257 @@
+{
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "startTime": "2025-09-26T21:20:34.089Z",
+    "endTime": "2025-09-26T21:21:24.335Z"
+  },
+  "tests": [
+    {
+      "name": "Price Query Test",
+      "success": true,
+      "passed": 4,
+      "total": 4,
+      "validations": [
+        {
+          "name": "Response Success",
+          "check": true,
+          "actual": true,
+          "expected": true
+        },
+        {
+          "name": "Mode is Analyze Only",
+          "check": true,
+          "actual": false,
+          "expected": false
+        },
+        {
+          "name": "Contains Analysis",
+          "check": true,
+          "actual": 197,
+          "expected": "> 0"
+        },
+        {
+          "name": "Has Recommendations",
+          "check": true,
+          "actual": 2,
+          "expected": "> 0"
+        }
+      ],
+      "metadata": {
+        "query": "What's the current ETH price and what does it mean for DeFi yields?",
+        "responseTime": 6024,
+        "aiSummary": "Based on current market context and your query, here is a high-level analysis with actionable recommendations for your next steps. This analysis is generated from available data and best practices."
+      },
+      "timestamp": "2025-09-26T21:20:49.484Z"
+    },
+    {
+      "name": "Yield Optimization Test",
+      "success": true,
+      "passed": 5,
+      "total": 5,
+      "validations": [
+        {
+          "name": "Response Success",
+          "check": true,
+          "actual": true,
+          "expected": true
+        },
+        {
+          "name": "Intent Recognition",
+          "check": true,
+          "actual": "YIELD_OPTIMIZATION",
+          "expected": "YIELD_OPTIMIZATION or similar"
+        },
+        {
+          "name": "No Execution Actions",
+          "check": true,
+          "actual": false,
+          "expected": false
+        },
+        {
+          "name": "Has Opportunities",
+          "check": true,
+          "actual": 2,
+          "expected": "> 0"
+        },
+        {
+          "name": "Risk Assessment Present",
+          "check": true,
+          "actual": true,
+          "expected": true
+        }
+      ],
+      "metadata": {
+        "query": "Find me the best USDC yield opportunities with low risk on Ethereum and Polygon",
+        "intentType": "YIELD_OPTIMIZATION",
+        "opportunityCount": 2,
+        "responseTime": 6015
+      },
+      "timestamp": "2025-09-26T21:20:57.500Z"
+    },
+    {
+      "name": "Risk Analysis Test",
+      "success": true,
+      "passed": 4,
+      "total": 4,
+      "validations": [
+        {
+          "name": "Response Success",
+          "check": true,
+          "actual": true,
+          "expected": true
+        },
+        {
+          "name": "Risk Intent Recognition",
+          "check": true,
+          "actual": "RISK_ASSESSMENT",
+          "expected": "RISK_ASSESSMENT or similar"
+        },
+        {
+          "name": "Risk Assessment Present",
+          "check": true,
+          "actual": true,
+          "expected": true
+        },
+        {
+          "name": "No Execution Actions",
+          "check": true,
+          "actual": false,
+          "expected": false
+        }
+      ],
+      "metadata": {
+        "query": "Analyze the current DeFi market risks and potential liquidation dangers",
+        "intentType": "RISK_ASSESSMENT",
+        "riskAssessment": "Maintain healthy collateral ratios and consider hedging during elevated volatility.",
+        "responseTime": 6010
+      },
+      "timestamp": "2025-09-26T21:21:05.512Z"
+    },
+    {
+      "name": "Market Intelligence Test",
+      "success": true,
+      "passed": 4,
+      "total": 4,
+      "validations": [
+        {
+          "name": "Response Success",
+          "check": true,
+          "actual": true,
+          "expected": true
+        },
+        {
+          "name": "Market Intent Recognition",
+          "check": true,
+          "actual": "MARKET_INTELLIGENCE",
+          "expected": "MARKET_INTELLIGENCE or similar"
+        },
+        {
+          "name": "Analysis Present",
+          "check": true,
+          "actual": 197,
+          "expected": "> 50 characters"
+        },
+        {
+          "name": "No Execution Actions",
+          "check": true,
+          "actual": false,
+          "expected": false
+        }
+      ],
+      "metadata": {
+        "query": "What are the current DeFi market conditions and trends?",
+        "pythDataCount": 2,
+        "responseTime": 6009
+      },
+      "timestamp": "2025-09-26T21:21:14.325Z"
+    },
+    {
+      "name": "Cross-Chain Analysis Test",
+      "success": true,
+      "passed": 4,
+      "total": 4,
+      "validations": [
+        {
+          "name": "Response Success",
+          "check": true,
+          "actual": true,
+          "expected": true
+        },
+        {
+          "name": "Cross-Chain Intent",
+          "check": true,
+          "actual": "CROSS_CHAIN_ANALYSIS",
+          "expected": "CROSS_CHAIN_ANALYSIS or similar"
+        },
+        {
+          "name": "Multiple Chain Analysis",
+          "check": true,
+          "actual": "Contains both chain names",
+          "expected": true
+        },
+        {
+          "name": "No Execution Actions",
+          "check": true,
+          "actual": false,
+          "expected": false
+        }
+      ],
+      "metadata": {
+        "query": "Compare yield farming opportunities between Ethereum and Polygon networks",
+        "intentType": "CROSS_CHAIN_ANALYSIS",
+        "responseTime": 6006
+      },
+      "timestamp": "2025-09-26T21:21:22.334Z"
+    }
+  ],
+  "pythData": {
+    "data": [
+      {
+        "price": "4013.102039",
+        "confidence": "1.617834",
+        "timestamp": "2025-09-26T21:20:33.000Z",
+        "publishTime": 1758921633,
+        "feedId": "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace"
+      },
+      {
+        "price": "109406.187767",
+        "confidence": "28.107767",
+        "timestamp": "2025-09-26T21:20:33.000Z",
+        "publishTime": 1758921633,
+        "feedId": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
+      },
+      {
+        "price": "0.999704",
+        "confidence": "0.000726",
+        "timestamp": "2025-09-26T21:20:33.000Z",
+        "publishTime": 1758921633,
+        "feedId": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+      }
+    ],
+    "validation": {
+      "isValid": false,
+      "issues": [
+        "Missing symbol",
+        "Missing symbol",
+        "Missing symbol"
+      ],
+      "dataCount": 3
+    }
+  },
+  "serverHealth": {
+    "isHealthy": true,
+    "status": {
+      "status": "healthy",
+      "timestamp": "2025-09-26T21:20:42.525Z",
+      "services": {
+        "pyth": true,
+        "graph": true,
+        "aiModel": "mistral-medium"
+      }
+    },
+    "responseTime": "unknown"
+  }
+}

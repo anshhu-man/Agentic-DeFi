@@ -35,8 +35,7 @@ A unified, intelligent backend for Web3 that combines Agentic AI with real-time,
 
 - **Runtime**: Node.js 18+ with TypeScript
 - **Framework**: Express.js with Socket.IO for real-time updates
-- **Database**: PostgreSQL with Prisma ORM
-- **Cache**: Redis for high-performance data caching
+- **Database**: None required for current features
 - **AI**: OpenAI GPT for natural language processing
 - **Blockchain**: Alchemy SDK, ethers.js
 - **Data**: GraphQL clients for The Graph Protocol
@@ -79,8 +78,6 @@ GRAPH_API_KEY=your_graph_api_key_here
 # Database
 DATABASE_URL="postgresql://postgres:password@localhost:5432/agentic_explorer"
 
-# Redis
-REDIS_URL="redis://localhost:6379"
 
 # JWT Secret
 JWT_SECRET=your_secure_jwt_secret_here
@@ -89,7 +86,7 @@ JWT_SECRET=your_secure_jwt_secret_here
 ### 3. Start with Docker (Recommended)
 
 ```bash
-# Start all services (PostgreSQL, Redis, API)
+# Start API
 docker-compose up -d
 
 # View logs
@@ -101,14 +98,10 @@ docker-compose logs -f api
 If you prefer to run without Docker:
 
 ```bash
-# Start PostgreSQL and Redis manually
+# Then run:
 # Then run:
 
-# Generate Prisma client
-npx prisma generate
 
-# Run database migrations
-npx prisma migrate dev
 
 # Start development server
 npm run dev
@@ -222,8 +215,6 @@ npm run build        # Build for production
 npm run start        # Start production server
 npm run test         # Run tests
 npm run lint         # Run ESLint
-npm run db:migrate   # Run database migrations
-npm run db:generate  # Generate Prisma client
 ```
 
 ### Adding New Agents
@@ -252,8 +243,6 @@ npm run db:generate  # Generate Prisma client
 
 ### Health Checks
 The `/health` endpoint provides status for all services:
-- Database connectivity
-- Redis cache
 - External API availability
 - Service-specific health metrics
 
@@ -270,7 +259,6 @@ Structured logging with Winston:
 
 1. Set `NODE_ENV=production`
 2. Configure production database
-3. Set up Redis cluster
 4. Configure load balancer
 5. Set up monitoring and alerts
 
@@ -280,7 +268,6 @@ Structured logging with Winston:
 NODE_ENV=production
 PORT=3000
 DATABASE_URL=postgresql://...
-REDIS_URL=redis://...
 ALCHEMY_API_KEY=...
 OPENAI_API_KEY=...
 JWT_SECRET=...

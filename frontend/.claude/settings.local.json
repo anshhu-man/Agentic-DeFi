@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/sumant.tirkey/Desktop/ai_stuffs/agentic-defi-vista-90/src/components/agentic -name \"*.jsx\" -exec sed -i '' 's/bg-gray-900 text-white/bg-primary text-primary-foreground/g' {} ;)",
+      "Bash(find /Users/sumant.tirkey/Desktop/ai_stuffs/agentic-defi-vista-90/src/components/agentic -name \"*.jsx\" -exec sed -i '' 's/border-gray-200/border-border/g' {} ;)",
+      "Bash(find /Users/sumant.tirkey/Desktop/ai_stuffs/agentic-defi-vista-90/src/components/agentic -name \"*.jsx\" -exec sed -i '' 's/hover:bg-gray-100/hover:bg-muted/g' {} ;)",
+      "Bash(npm run dev)",
+      "mcp__ide__getDiagnostics"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

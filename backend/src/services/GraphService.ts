@@ -1,7 +1,7 @@
 import { GraphQLClient } from 'graphql-request';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import { cache } from '../utils/redis';
+import { cache } from '../utils/cache';
 import { 
   PoolData, 
   LendingRate, 
