@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { fetchOrdersConfig, hasClaimed as hasClaimedSvc, claimFaucet, importTokenToMetaMask } from "@/services/orders";
+import { ensureSepolia, addSepolia } from "@/integrations/network";
 
 declare global {
   interface Window {
@@ -37,6 +39,34 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
+  // Attempt faucet claim once on connect for the current address
+  const startFaucetFlow = async (acct: string) => {
+    try {
+      const cfg = await fetchOrdersConfig().catch(() => null as any);
+      if (!cfg || !cfg.coins || typeof cfg.coins !== "string" || !cfg.coins.startsWith("0x")) {
+        return; // contracts not deployed / not configured -> skip
+      }
+      const localKey = `faucet:${acct}`;
+      if (localStorage.getItem(localKey) === "claimed") return;
+
+      const already = await hasClaimedSvc(cfg as any, acct as any).catch(() => true);
+      if (!already) {
+        await claimFaucet(cfg as any);
+        localStorage.setItem(localKey, "claimed");
+        toast({
+          title: "100 COIN minted",
+          description: "Faucet claim successful. Token will be imported into MetaMask.",
+        });
+        await importTokenToMetaMask(cfg as any).catch(() => false);
+      } else {
+        localStorage.setItem(localKey, "claimed");
+      }
+    } catch (e: any) {
+      // non-fatal
+      console.debug("Faucet flow skipped:", e?.message || e);
+    }
+  };
+
   useEffect(() => {
     if (typeof window === "undefined" || !window.ethereum) return;
 
@@ -48,6 +78,8 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         if (accounts && accounts[0]) {
           setAddress(accounts[0]);
           localStorage.setItem("walletAddress", accounts[0]);
+          // Try faucet flow on auto-connect
+          startFaucetFlow(accounts[0]).catch(() => {});
         }
 
         const id: string = await window.ethereum.request({
@@ -55,6 +87,22 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         });
         setChainId(id);
         localStorage.setItem("walletChainId", id);
+
+        // Ensure we are on Sepolia testnet
+        try {
+          const switched = await ensureSepolia();
+          if (switched) {
+            const nid: string = await window.ethereum.request({ method: "eth_chainId" });
+            setChainId(nid);
+            localStorage.setItem("walletChainId", nid);
+            toast({
+              title: "Switched network",
+              description: "Using Ethereum Sepolia (SepoliaETH).",
+            });
+          }
+        } catch {
+          // ignore
+        }
       } catch {
         // ignore
       }
@@ -125,10 +173,29 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
       setChainId(id);
       localStorage.setItem("walletChainId", id);
 
+      // Enforce Sepolia testnet
+      try {
+        const switched = await ensureSepolia();
+        if (switched) {
+          const nid = await window.ethereum.request({ method: "eth_chainId" });
+          setChainId(nid);
+          localStorage.setItem("walletChainId", nid);
+          toast({
+            title: "Sepolia network active",
+            description: "All actions use SepoliaETH test tokens.",
+          });
+        }
+      } catch {
+        // ignore
+      }
+
       toast({
         title: "Wallet connected",
         description: `${selected.slice(0, 6)}...${selected.slice(-4)}`,
       });
+
+      // Auto faucet claim + import token
+      await startFaucetFlow(selected);
     } catch (e: any) {
       const msg = e?.message || e?.data?.message || "User rejected or request failed";
       setError(msg);

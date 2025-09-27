@@ -5,19 +5,20 @@ import rateLimit from 'express-rate-limit';
 import { Server } from 'socket.io';
 import { createServer } from 'http';
 
-import { config } from './config';
+import { config, vaultConfig } from './config';
 import { logger } from './utils/logger';
 
 // Import services
 import PythService from './services/PythService';
 import EnhancedPythService from './services/EnhancedPythService';
 import GraphService from './services/GraphService';
-import EnhancedGraphService from './services/EnhancedGraphService';
+// import EnhancedGraphService from './services/EnhancedGraphService';
 import AgenticOrchestrator from './services/AgenticOrchestrator';
 import { NetworkConfigService, ChainId } from './services/NetworkConfigService';
 import TransactionMonitor from './services/TransactionMonitorService';
 import { NetworkConfig } from './utils/networkConfig';
 import { ethers } from 'ethers';
+import VaultKeeperService from './services/VaultKeeperService';
 
 // Import agents
 import YieldAgent from './agents/YieldAgent';
@@ -35,6 +36,7 @@ import chatController from './controllers/chatController';
 import enhancedChatController from './controllers/enhancedChatController';
 import txController from './controllers/txController';
 import vaultController from './controllers/vaultController';
+import ordersController from './controllers/ordersController';
 
 // Global error handlers to prevent unhandled crashes
 process.on('unhandledRejection', (err: any) => {
@@ -61,6 +63,7 @@ class AgenticExplorerServer {
   private pythService!: PythService;
   private graphService!: GraphService;
   private networkConfigService!: NetworkConfigService;
+  private vaultKeeper?: VaultKeeperService;
   
   // AI Agents
   private yieldAgent!: YieldAgent;
@@ -109,6 +112,43 @@ class AgenticExplorerServer {
       logger.warn('Transaction monitor setup failed', { error: e instanceof Error ? e.message : e });
     }
     
+    // Optionally start on-chain Pyth keeper that invokes
+    // updateAndExecute(...) in the vault which internally uses
+    // IPyth.getPriceNoOlderThan(feedId, maxStaleSecs) to gate execution.
+    try {
+      if (vaultConfig.executionBotEnabled) {
+        const net = vaultConfig.defaultNetwork as keyof typeof vaultConfig.networks;
+        const netCfg = vaultConfig.networks[net];
+        const pk = process.env.VAULT_PRIVATE_KEY || process.env.PRIVATE_KEY || '';
+        const vaultAddr = process.env.VAULT_ADDR || '';
+
+        if (!pk || !vaultAddr) {
+          logger.warn('VaultKeeper disabled: missing VAULT_PRIVATE_KEY/PRIVATE_KEY or VAULT_ADDR env');
+        } else {
+          this.vaultKeeper = new VaultKeeperService({
+            rpcUrl: netCfg.rpcUrl,
+            privateKey: pk,
+            vaultAddress: vaultAddr,
+            pythAddress: netCfg.pythContract,
+            feedId: vaultConfig.ethFeedId,
+            intervalSec: Math.max(10, Math.floor((vaultConfig.monitoringIntervalMs || 30000) / 1000)),
+            maxStaleSecs: vaultConfig.maxStalenessSeconds,
+            maxConfBps: vaultConfig.maxConfidenceBps,
+            users: [] // TODO: index active users from events and populate
+          });
+          this.vaultKeeper.start();
+          logger.info('VaultKeeper started', {
+            network: net,
+            rpcUrl: netCfg.rpcUrl,
+            vault: vaultAddr,
+            pyth: netCfg.pythContract
+          });
+        }
+      }
+    } catch (e) {
+      logger.warn('VaultKeeper start failed', { error: e instanceof Error ? e.message : e });
+    }
+
     logger.info('Services initialized successfully');
   }
 
@@ -204,6 +244,17 @@ class AgenticExplorerServer {
     this.app.use('/api/chat', enhancedChatController);
     this.app.use('/api/tx', txController);
     this.app.use('/api/vault', vaultController);
+    this.app.use('/api/orders', ordersController);
+
+    // Keeper health endpoint
+    this.app.get('/api/vault/keeper-health', (req, res) => {
+      try {
+        const h = this.vaultKeeper?.health() || null;
+        res.json({ success: true, data: h });
+      } catch (e) {
+        res.status(500).json({ success: false, error: 'Keeper health unavailable' });
+      }
+    });
 
     // Main query endpoint
     this.app.post('/api/query', async (req, res) => {

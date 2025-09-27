@@ -559,6 +559,112 @@ export class PythService {
       return false;
     }
   }
+
+  // Method for fetching Hermes update data for on-chain updates
+  async fetchHermesUpdateForOnChain(feedIds: string[]): Promise<string[]> {
+    try {
+      logger.info('Fetching Hermes update for on-chain', { feedIds });
+      
+      const response = await axios.get(`${this.baseUrl}/v2/updates/price/latest`, {
+        params: {
+          'ids[]': feedIds,
+          encoding: 'hex'
+        },
+        timeout: 15000,
+        headers: { Accept: 'application/json' }
+      });
+
+      const data = response.data;
+      const updateData: string[] = [];
+      const updates = Array.isArray(data?.updates) ? data.updates : [];
+
+      // Prefer v2 hex encoding: updates: [ "..." ] (no 0x)
+      for (const u of updates) {
+        if (typeof u === 'string' && u.length > 0) {
+          updateData.push('0x' + u.replace(/^0x/, ''));
+          continue;
+        }
+        // Fallback object shapes
+        if (u && typeof u === 'object') {
+          if (typeof (u as any).data === 'string') {
+            updateData.push('0x' + String((u as any).data).replace(/^0x/, ''));
+            continue;
+          }
+          if ((u as any).binary && typeof (u as any).binary.data === 'string') {
+            updateData.push('0x' + String((u as any).binary.data).replace(/^0x/, ''));
+            continue;
+          }
+        }
+      }
+
+      // Root-level binary fallback: { binary: { data: [ "...hex..." ] } }
+      if (updateData.length === 0 && data?.binary?.data) {
+        if (Array.isArray(data.binary.data) && data.binary.data.length > 0) {
+          updateData.push('0x' + String(data.binary.data[0]).replace(/^0x/, ''));
+        } else if (typeof data.binary.data === 'string') {
+          updateData.push('0x' + String(data.binary.data).replace(/^0x/, ''));
+        }
+      }
+
+      logger.info('Successfully fetched Hermes update data', {
+        feedIds,
+        updateCount: updateData.length
+      });
+
+      return updateData;
+    } catch (error: any) {
+      logger.error('Failed to fetch Hermes update for on-chain', {
+        feedIds,
+        error: error?.message || 'Unknown error'
+      });
+      return [];
+    }
+  }
+
+  // Method for formatting on-chain price data
+  formatOnChainPrice(priceData: {
+    price: string;
+    confidence: string;
+    expo: number;
+    publishTime: number;
+  }): {
+    price18: string;
+    confidence18: string;
+    publishTime: Date;
+  } {
+    const price18 = this.formatPrice(priceData.price, priceData.expo);
+    const confidence18 = this.formatPrice(priceData.confidence, priceData.expo);
+    
+    return {
+      price18,
+      confidence18,
+      publishTime: new Date(priceData.publishTime * 1000)
+    };
+  }
+
+  // Method for validating price confidence
+  async validatePriceConfidence(
+    price: string,
+    confidence: string,
+    expo: number,
+    maxConfBps: number
+  ): Promise<boolean> {
+    try {
+      const priceValue = parseFloat(this.formatPrice(price, expo));
+      const confidenceValue = parseFloat(this.formatPrice(confidence, expo));
+      
+      if (priceValue === 0) {
+        return false;
+      }
+      
+      const confidenceRatio = (confidenceValue / Math.abs(priceValue)) * 10000; // Convert to basis points
+      
+      return confidenceRatio <= maxConfBps;
+    } catch (error) {
+      logger.error('Failed to validate price confidence', { error });
+      return false;
+    }
+  }
 }
 
 export default PythService;

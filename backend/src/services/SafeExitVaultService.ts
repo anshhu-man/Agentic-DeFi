@@ -34,6 +34,8 @@ const VAULT_ABI = [
   'event PriceUpdated(bytes32 indexed feedId, uint256 price18, uint256 conf18, uint256 timestamp)',
 ];
 
+const VAULT_IFACE = new ethers.utils.Interface(VAULT_ABI);
+
 export class SafeExitVaultService {
   private pythService: PythService;
   private providers: Map<string, ethers.providers.JsonRpcProvider> = new Map();
@@ -317,17 +319,25 @@ export class SafeExitVaultService {
         depositTime: positionData.depositTime.toNumber(),
       };
       
-      // Get current price
-      const [price18, conf18] = await vault.getCurrentPrice(vaultConfig.maxStalenessSeconds);
-      const currentPrice = ethers.utils.formatEther(price18);
-      const priceConfidence = ethers.utils.formatEther(conf18);
+      // Get current price (handle pull-oracle freshness: may revert before any on-chain update)
+      let currentPrice = '0';
+      let priceConfidence = '0';
+      try {
+        const [price18, conf18] = await vault.getCurrentPrice(vaultConfig.maxStalenessSeconds);
+        currentPrice = ethers.utils.formatEther(price18);
+        priceConfidence = ethers.utils.formatEther(conf18);
+      } catch (e: any) {
+        // No on-chain price posted yet (pull-oracle); return zeros and do not block position read
+        currentPrice = '0';
+        priceConfidence = '0';
+      }
       
-      // Check if can execute
+      // Check if can execute (only when we have a non-zero current price)
       const currentPriceNum = parseFloat(currentPrice);
       const stopLossNum = parseFloat(position.stopLossPrice18);
       const takeProfitNum = parseFloat(position.takeProfitPrice18);
       
-      const canExecute = position.active && (
+      const canExecute = position.active && currentPriceNum > 0 && (
         currentPriceNum <= stopLossNum || 
         currentPriceNum >= takeProfitNum
       );
@@ -454,6 +464,69 @@ export class SafeExitVaultService {
       throw error;
     }
   }
-}
+  /**
+   * Encode calldata for setTriggers(uint256,uint256) using ethers Interface.
+   * Accepts human USD strings (e.g. "2500.12") and scales to 1e18.
+   */
+  encodeSetTriggersCalldata(
+    stopLossPrice: string,
+    takeProfitPrice: string
+  ): string {
+    const stopLossPrice18 = ethers.utils.parseEther(stopLossPrice);
+    const takeProfitPrice18 = ethers.utils.parseEther(takeProfitPrice);
+    return VAULT_IFACE.encodeFunctionData('setTriggers', [stopLossPrice18, takeProfitPrice18]);
+  }
 
+  /**
+   * Get function selector for deposit()
+   */
+  getDepositSelector(): string {
+    return VAULT_IFACE.getSighash('deposit');
+  }
+
+  /**
+   * Read current price and confidence from the vault using getCurrentPrice(maxStaleSecs)
+   */
+  async readCurrentPrice(
+    vaultAddress: string,
+    network: string = vaultConfig.defaultNetwork,
+    maxStaleSecs: number = vaultConfig.maxStalenessSeconds
+  ): Promise<{ price18: string; conf18: string }> {
+    const provider = this.providers.get(network);
+    if (!provider) throw new Error(`No provider for network: ${network}`);
+    const vault = new ethers.Contract(vaultAddress, VAULT_ABI, provider);
+    try {
+      const [price18, conf18] = await vault.getCurrentPrice(maxStaleSecs);
+      return { price18: price18.toString(), conf18: conf18.toString() };
+    } catch (e: any) {
+      // Pull-oracle path: before any on-chain update, this view may revert.
+      // Fallback to off-chain Hermes to avoid blocking UI connectivity.
+      logger.warn('getCurrentPrice reverted; falling back to Hermes off-chain price', {
+        network,
+        vaultAddress,
+        reason: e?.reason || e?.message || 'CALL_EXCEPTION',
+      });
+      try {
+        const prices = await this.pythService.getRealTimePrices(['ETH/USD']);
+        if (Array.isArray(prices) && prices.length > 0) {
+          const p = prices.find((x) => x.symbol === 'ETH/USD') || prices[0];
+          const num = parseFloat(p.price);
+          if (!isNaN(num) && num > 0) {
+            // Scale to 1e18 for UI compatibility
+            const price18 = ethers.utils.parseUnits(num.toString(), 18).toString();
+            // Confidence not available from this path; return 0
+            return { price18, conf18: '0' };
+          }
+        }
+      } catch (hermesErr: any) {
+        logger.warn('Hermes fallback failed in readCurrentPrice', {
+          error: hermesErr?.message || 'unknown',
+        });
+      }
+      // Final safe fallback
+      return { price18: '0', conf18: '0' };
+    }
+  }
+}
+  
 export default SafeExitVaultService;

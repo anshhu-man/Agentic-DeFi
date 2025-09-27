@@ -40,7 +40,7 @@ const Navigation = () => {
     { path: "/", label: "Home", icon: Home, hideOnHome: true },
     { path: "/explorer", label: "Explorer", icon: Search },
     { path: "/strategy", label: "Strategy", icon: TrendingUp },
-    { path: "/alerts", label: "Alerts", icon: AlertTriangle },
+      { path: "/alerts", label: "Alerts", icon: AlertTriangle },
     { path: "/portfolio", label: "Portfolio", icon: Wallet },
     { path: "/about", label: "About", icon: Info }
   ];

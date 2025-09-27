@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Script.sol";
 import "../src/SafeExitVault.sol";
+import "../src/Coins.sol";
 
 /**
  * @title Deploy
@@ -17,7 +18,7 @@ contract Deploy is Script {
     bytes32 constant ETH_USD_FEED_ID = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
 
     function run() external {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        uint256 deployerPrivateKey = uint256(vm.envBytes32("PRIVATE_KEY"));
         
         vm.startBroadcast(deployerPrivateKey);
 
@@ -26,8 +27,11 @@ contract Deploy is Script {
         
         // Deploy SafeExitVault
         SafeExitVault vault = new SafeExitVault(pythAddress, ETH_USD_FEED_ID);
+        // Deploy Coins (faucet ERC20)
+        Coins coin = new Coins();
         
         console.log("SafeExitVault deployed to:", address(vault));
+        console.log("Coins deployed to:", address(coin));
         console.log("Pyth contract:", pythAddress);
         console.log("Feed ID:", vm.toString(ETH_USD_FEED_ID));
         console.log("Deployer:", vm.addr(deployerPrivateKey));

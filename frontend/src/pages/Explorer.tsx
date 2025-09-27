@@ -4,12 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, DollarSign, Activity, Bot, Shield, RefreshCw } from "lucide-react";
+import { TrendingUp, DollarSign, Activity, Bot, Shield, RefreshCw, Vault, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import EnhancedSearchSection from "@/components/search/enhanced-search-section";
 import apiService from "@/services/api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import VaultCreator from "@/components/vault/VaultCreator";
+import VaultDashboard from "@/components/vault/VaultDashboard";
+import PythMonitor from "@/components/vault/PythMonitor";
+import { depositETH, setTriggersUSD, getPosition as getVaultPosition, executeOnce, getKeeperHealth } from "@/services/vault";
 
 declare global {
   interface Window {
@@ -48,11 +52,20 @@ const Explorer = () => {
     "DAI/USD": 1.0,
   };
 
-  const [assetPrices, setAssetPrices] = useState<Array<{ symbol: string; price: number; publishTime: string | null }>>(seedAssetPrices);
+  const [assetPrices, setAssetPrices] = useState<Array<{ symbol: string; price: number; confidence: number; publishTime: string | null }>>(
+    seedAssetPrices.map(p => ({ ...p, confidence: 95.5 }))
+  );
   const [assetVols, setAssetVols] = useState<Record<string, number>>(seedVols);
   const [correlations, setCorrelations] = useState<Record<string, number>>({});
   const [loadingPyth, setLoadingPyth] = useState(false);
   const [series, setSeries] = useState<Record<string, number[]>>({});
+
+  // Vault-related state
+  const [vaultPositions, setVaultPositions] = useState<any[]>([]);
+  const [triggerEvents, setTriggerEvents] = useState<any[]>([]);
+  const [triggerChecks, setTriggerChecks] = useState<any[]>([]);
+  const [confidenceBands, setConfidenceBands] = useState<any[]>([]);
+  const [pythConnected, setPythConnected] = useState(true);
 
   const computeReturns = (arr: number[]) => {
     const rets: number[] = [];
@@ -137,12 +150,21 @@ const Explorer = () => {
       const prevBy = new Map(assetPrices.map((a) => [a.symbol, a]));
       const seedBy = new Map(seedAssetPrices.map((a) => [a.symbol, a]));
       const liveBy = new Map(
-        (prices as Array<{ symbol: string; price: number; publishTime: string | null }>).map((a) => [a.symbol, a])
+        (prices as Array<{ symbol: string; price: number; confidence: number | null; publishTime: string | null }>).map((a) => [a.symbol, a])
       );
 
-      // Merge live prices with previous or seed data to avoid empty UI
-      const nextPrices: Array<{ symbol: string; price: number; publishTime: string | null }> = defaultSymbols.map(
-        (sym) => liveBy.get(sym) || (prevBy.get(sym) as any) || (seedBy.get(sym) as any)
+      // Merge live prices with previous or seed data to avoid empty UI (include confidence)
+      const nextPrices: Array<{ symbol: string; price: number; confidence: number; publishTime: string | null }> = defaultSymbols.map(
+        (sym) => {
+          const live = liveBy.get(sym) as any;
+          const prev = prevBy.get(sym) as any;
+          const seed = seedBy.get(sym) as any;
+          const base = live || prev || seed;
+          return {
+            ...base,
+            confidence: (live?.confidence ?? prev?.confidence ?? seed?.confidence ?? 95.5) as number
+          };
+        }
       );
       setAssetPrices(nextPrices);
 
@@ -201,9 +223,213 @@ const Explorer = () => {
     }
   };
 
-  const handleRefresh = () => {
-    fetchPythData();
-    fetchProtocols(selectedCategory);
+  const handleRefresh = async () => {
+    try {
+      await fetchPythData();
+      await fetchProtocols(selectedCategory);
+      await fetchVaultData();
+      await fetchTriggerChecks();
+      try {
+        const h = await getKeeperHealth();
+        setPythConnected(!!h?.success);
+      } catch {
+        setPythConnected(false);
+      }
+    } catch {
+      // non-fatal UI refresh
+    }
+  };
+
+  // Vault-related functions
+  const fetchVaultData = async () => {
+    if (!walletAddress) return;
+
+    try {
+      const [posResp, bands] = await Promise.all([
+        getVaultPosition(walletAddress).catch(() => null as any),
+        apiService.getConfidenceBands(defaultSymbols).catch(() => []),
+      ]);
+
+      setConfidenceBands(bands);
+
+      if (posResp && posResp.position) {
+        const amountETH = Number(posResp.position.amountETH || "0");
+        const currentPrice = Number(posResp.currentPrice || "0");
+        const stopUsd = Number(posResp.position.stopLossPrice18 || "0");
+        const takeUsd = Number(posResp.position.takeProfitPrice18 || "0");
+        const confAbs = Number(posResp.priceConfidence || "0");
+        const entryPrice = currentPrice; // approximate: deposit near-now
+
+        const stopPct = entryPrice > 0 ? ((entryPrice - stopUsd) / entryPrice) * 100 : 0;
+        const takePct = entryPrice > 0 ? ((takeUsd - entryPrice) / entryPrice) * 100 : 0;
+        const confPct = currentPrice > 0 ? (confAbs / currentPrice) * 100 : 0;
+
+        const position = {
+          id: walletAddress,
+          asset: "ETH/USD",
+          depositAmount: amountETH,
+          currentValue: amountETH * currentPrice,
+          entryPrice: entryPrice,
+          currentPrice: currentPrice,
+          stopLoss: Math.max(0, stopPct),
+          takeProfit: Math.max(0, takePct),
+          confidence: Math.max(0, Math.min(100, confPct)),
+          status: posResp.position.active ? "active" : "triggered",
+          createdAt: new Date((posResp.position.depositTime || 0) * 1000).toISOString(),
+          pnl: 0,
+          pnlPercentage: 0,
+        };
+
+        setVaultPositions(amountETH > 0 ? [position] : []);
+      } else {
+        setVaultPositions([]);
+      }
+    } catch (e) {
+      console.error("Failed to fetch vault data:", e);
+      setVaultPositions([]);
+    }
+  };
+
+  const fetchTriggerChecks = async () => {
+    if (!walletAddress) return;
+
+    try {
+      const checks = await apiService.checkTriggerConditions(walletAddress);
+      setTriggerChecks(checks);
+    } catch (e) {
+      console.error("Failed to check triggers:", e);
+    }
+  };
+
+  const handleCreateVault = async (config: any) => {
+    if (!walletAddress) {
+      toast({
+        variant: "destructive",
+        title: "Wallet not connected",
+        description: "Please connect your wallet first",
+      });
+      return;
+    }
+    if (!config?.asset || config.asset !== "ETH/USD") {
+      toast({
+        variant: "destructive",
+        title: "Unsupported asset",
+        description: "This demo vault currently supports ETH/USD only.",
+      });
+      return;
+    }
+    const selected = assetPrices.find((a) => a.symbol === config.asset);
+    const currentPrice = Number(selected?.price || 0);
+    if (!(currentPrice > 0)) {
+      toast({
+        variant: "destructive",
+        title: "Price unavailable",
+        description: "Live price not available; please retry in a moment.",
+      });
+      return;
+    }
+
+    try {
+      // 1) Deposit ETH from wallet
+      const txDeposit = await depositETH(walletAddress, String(config.depositAmount));
+      toast({
+        title: "Deposit submitted",
+        description: `Tx: ${txDeposit.slice(0, 10)}...`,
+      });
+
+      // 2) Compute USD trigger prices from current price and percentages
+      const entryPrice = currentPrice;
+      const stopUsd = entryPrice * (1 - Number(config.stopLoss || 0) / 100);
+      const takeUsd = entryPrice * (1 + Number(config.takeProfit || 0) / 100);
+
+      // 3) Set triggers from wallet in USD terms (scaled 1e18 on-chain)
+      const txTriggers = await setTriggersUSD(
+        walletAddress,
+        stopUsd.toFixed(8),
+        takeUsd.toFixed(8)
+      );
+      toast({
+        title: "Triggers set",
+        description: `Tx: ${txTriggers.slice(0, 10)}...`,
+      });
+
+      await fetchVaultData();
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "Vault setup failed",
+        description: e?.message || "Transaction failed",
+      });
+    }
+  };
+
+  const handleExecuteTrigger = async (
+    positionId: string,
+    _triggerType: "stop_loss" | "take_profit"
+  ) => {
+    if (!walletAddress) return;
+
+    try {
+      const result = await executeOnce(walletAddress);
+      toast({
+        title: "Execution submitted",
+        description: `Tx: ${result.txHash?.slice(0, 10)}...`,
+      });
+      await fetchVaultData();
+
+      const mappedType =
+        typeof result.triggerType === "string" && result.triggerType.toLowerCase().includes("stop")
+          ? "stop_loss"
+          : "take_profit";
+
+      setTriggerEvents((prev) => [
+        {
+          id: Date.now().toString(),
+          vaultId: positionId,
+          type: mappedType,
+          price: Number(result.price18 || "0") / 1e18,
+          confidence: 0,
+          timestamp: new Date().toISOString(),
+          executed: true,
+          txHash: result.txHash,
+        },
+        ...prev,
+      ]);
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "Execution failed",
+        description: e?.message || "Transaction failed",
+      });
+    }
+  };
+
+  const handleEmergencyExit = async (positionId: string) => {
+    if (!walletAddress) return;
+
+    try {
+      const result = await apiService.emergencyExit(positionId, walletAddress);
+
+      if (result.success) {
+        toast({
+          title: "Emergency exit completed",
+          description: `Transaction: ${result.txHash}`,
+        });
+        fetchVaultData();
+      } else {
+        throw new Error(result.error || "Emergency exit failed");
+      }
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "Emergency exit failed",
+        description: e.message,
+      });
+    }
+  };
+
+  const handleExecuteFromMonitor = async (check: any) => {
+    await handleExecuteTrigger(check.vaultId, check.triggerType);
   };
 
   useEffect(() => {
@@ -340,6 +566,14 @@ const Explorer = () => {
     fetchProtocols(selectedCategory);
   }, [selectedCategory]);
 
+  // Fetch vault data when wallet connects
+  useEffect(() => {
+    if (walletAddress) {
+      fetchVaultData();
+      fetchTriggerChecks();
+    }
+  }, [walletAddress]);
+
   // Initial Pyth data fetch (hydrate seeds with live data)
   useEffect(() => {
     fetchPythData();
@@ -360,7 +594,7 @@ const Explorer = () => {
         toast({
           variant: "destructive",
           title: "Backend unreachable",
-          description: "Start backend on port 3000 or set VITE_API_BASE_URL in .env.local",
+          description: "Error while fetching",
         });
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -440,20 +674,48 @@ const Explorer = () => {
           {/* Header - will fade out when search is focused */}
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold mb-4">
-              <span className="gradient-text">Meta-Protocol</span> Explorer
+              <span className="gradient-text">Pyth-Powered</span> Safe-Exit Vaults
             </h1>
             <p className="text-muted-foreground text-lg">
-              Search across all DeFi protocols with AI-powered insights
+              On-chain price-triggered automated risk management with Hermes confidence validation
             </p>
+            <div className="flex items-center justify-center gap-4 mt-4">
+              <Badge variant="outline" className="bg-blue-500/10 text-blue-300 border-blue-400/30">
+                <Shield className="w-3 h-3 mr-1" />
+                Confidence-Aware Execution
+              </Badge>
+              <Badge variant="outline" className="bg-purple-500/10 text-purple-300 border-purple-400/30">
+                <Zap className="w-3 h-3 mr-1" />
+                Hermes Pull Updates
+              </Badge>
+              <Badge variant="outline" className="bg-green-500/10 text-green-300 border-green-400/30">
+                <Activity className="w-3 h-3 mr-1" />
+                Real-time Monitoring
+              </Badge>
+            </div>
           </div>
         </EnhancedSearchSection>
 
         {/* Main content that will also fade when search is focused */}
         <div className="grid lg:grid-cols-3 gap-8 transition-all duration-500" id="main-content">
           <div className="lg:col-span-2">
-            <Tabs defaultValue="protocols" className="w-full">
+            <Tabs defaultValue="vault" className="w-full">
               <div className="flex items-center justify-between mb-8">
-                <TabsList className="grid w-full grid-cols-4 max-w-lg bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-1">
+                <TabsList className="grid w-full grid-cols-6 max-w-2xl bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-1">
+                  <TabsTrigger 
+                    value="vault" 
+                    className="rounded-xl transition-all duration-300 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-300 data-[state=active]:shadow-lg data-[state=active]:shadow-purple-500/25"
+                  >
+                    <Vault className="w-4 h-4 mr-1" />
+                    Vault
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="monitor" 
+                    className="rounded-xl transition-all duration-300 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-300 data-[state=active]:shadow-lg data-[state=active]:shadow-orange-500/25"
+                  >
+                    <Zap className="w-4 h-4 mr-1" />
+                    Pyth Monitor
+                  </TabsTrigger>
                   <TabsTrigger 
                     value="protocols" 
                     onClick={() => handleCategoryChange("Dexes")}
@@ -498,6 +760,41 @@ const Explorer = () => {
                   </Badge>
                 )}
               </div>
+
+              <TabsContent value="vault" className="space-y-6">
+                <div className="grid gap-6">
+                  <VaultCreator 
+                    assetPrices={assetPrices}
+                    onCreateVault={handleCreateVault}
+                  />
+                  <VaultDashboard
+                    positions={vaultPositions}
+                    triggerEvents={triggerEvents}
+                    assetPrices={assetPrices}
+                    onExecuteTrigger={handleExecuteTrigger}
+                    onEmergencyExit={handleEmergencyExit}
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="monitor" className="space-y-6">
+                <PythMonitor
+                  priceUpdates={assetPrices.map(asset => ({
+                    symbol: asset.symbol,
+                    price: asset.price,
+                    confidence: asset.confidence,
+                    publishTime: asset.publishTime || new Date().toISOString(),
+                    slot: Math.floor(Math.random() * 1000000),
+                    priceChange: 0,
+                    priceChangePercentage: 0
+                  }))}
+                  confidenceBands={confidenceBands}
+                  triggerChecks={triggerChecks}
+                  isConnected={pythConnected}
+                  onRefresh={handleRefresh}
+                  onExecuteTrigger={handleExecuteFromMonitor}
+                />
+              </TabsContent>
 
               <TabsContent value="protocols" className="space-y-6">
                 {assetPrices.length === 0 ? (

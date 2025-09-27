@@ -422,4 +422,101 @@ router.get("/config", async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/vault/current-price
+ * Read on-chain current price and confidence from the vault
+ */
+router.get("/current-price", async (req: Request, res: Response) => {
+  try {
+    const {
+      vaultAddress,
+      network = vaultConfig.defaultNetwork,
+      maxStaleSecs = vaultConfig.maxStalenessSeconds
+    } = req.query;
+
+    if (!vaultAddress) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required query parameter: vaultAddress"
+      });
+    }
+
+    const { price18, conf18 } = await vaultService.readCurrentPrice(
+      vaultAddress as string,
+      network as string,
+      Number(maxStaleSecs)
+    );
+
+    return res.json({
+      success: true,
+      data: { price18, conf18 },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    logger.error("Get current price failed", { error: error.message });
+    return res.status(500).json({
+      success: false,
+      error: "CURRENT_PRICE_FAILED",
+      details: error?.message
+    });
+  }
+});
+
+/**
+ * GET /api/vault/selectors
+ * Returns common function selectors used by the frontend for wallet txs
+ */
+router.get("/selectors", async (_req: Request, res: Response) => {
+  try {
+    const depositSelector = vaultService.getDepositSelector();
+    return res.json({
+      success: true,
+      data: { depositSelector },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    logger.error("Fetch selectors failed", { error: error.message });
+    return res.status(500).json({
+      success: false,
+      error: "SELECTORS_FAILED",
+      details: error?.message
+    });
+  }
+});
+
+/**
+ * POST /api/vault/encode-set-triggers
+ * Returns ABI-encoded calldata for setTriggers(uint256,uint256) given human USD strings
+ * body: { stopLossPrice: string, takeProfitPrice: string }
+ */
+router.post("/encode-set-triggers", async (req: Request, res: Response) => {
+  try {
+    const { stopLossPrice, takeProfitPrice } = req.body || {};
+    if (!stopLossPrice || !takeProfitPrice) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: stopLossPrice, takeProfitPrice"
+      });
+    }
+
+    const data = vaultService.encodeSetTriggersCalldata(
+      String(stopLossPrice),
+      String(takeProfitPrice)
+    );
+
+    return res.json({
+      success: true,
+      data: { data },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    logger.error("Encode setTriggers failed", { error: error.message });
+    return res.status(500).json({
+      success: false,
+      error: "ENCODE_SET_TRIGGERS_FAILED",
+      details: error?.message
+    });
+  }
+});
+
 export default router;

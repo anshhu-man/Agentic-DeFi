@@ -132,6 +132,181 @@ class APIService {
     const json = await res.json();
     return json?.data || [];
   }
+
+  // Hermes API Integration for Vault Operations
+  async getHermesPrice(priceId: string): Promise<{
+    price: number;
+    confidence: number;
+    publishTime: string;
+    priceId: string;
+    expo: number;
+  }> {
+    const res = await fetch(`${this.baseURL}/api/hermes/price/${priceId}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Hermes price fetch failed: ${res.status} ${text}`);
+    }
+    const json = await res.json();
+    return json?.data || {};
+  }
+
+  async getHermesPrices(priceIds: string[]): Promise<Array<{
+    price: number;
+    confidence: number;
+    publishTime: string;
+    priceId: string;
+    expo: number;
+  }>> {
+    const params = new URLSearchParams();
+    params.set('priceIds', priceIds.join(','));
+    const res = await fetch(`${this.baseURL}/api/hermes/prices?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Hermes prices fetch failed: ${res.status} ${text}`);
+    }
+    const json = await res.json();
+    return json?.data || [];
+  }
+
+  // Vault Management API
+  async createVault(config: {
+    asset: string;
+    depositAmount: string;
+    stopLoss: number;
+    takeProfit: number;
+    confidenceThreshold: number;
+    maxSlippage: number;
+    autoReinvest: boolean;
+    emergencyExit: boolean;
+    userAddress: string;
+  }): Promise<{ success: boolean; vaultId?: string; error?: string }> {
+    const res = await fetch(`${this.baseURL}/api/vault/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Vault creation failed: ${res.status} ${text}`);
+    }
+    return res.json();
+  }
+
+  async getVaults(userAddress: string): Promise<Array<{
+    id: string;
+    asset: string;
+    depositAmount: number;
+    currentValue: number;
+    entryPrice: number;
+    currentPrice: number;
+    stopLoss: number;
+    takeProfit: number;
+    confidence: number;
+    status: 'active' | 'triggered' | 'emergency_exit';
+    createdAt: string;
+    pnl: number;
+    pnlPercentage: number;
+  }>> {
+    const params = new URLSearchParams();
+    params.set('userAddress', userAddress);
+    const res = await fetch(`${this.baseURL}/api/vault/list?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Vault list failed: ${res.status} ${text}`);
+    }
+    const json = await res.json();
+    return json?.data || [];
+  }
+
+  async executeTrigger(vaultId: string, triggerType: 'stop_loss' | 'take_profit', userAddress: string): Promise<{
+    success: boolean;
+    txHash?: string;
+    error?: string;
+  }> {
+    const res = await fetch(`${this.baseURL}/api/vault/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vaultId, triggerType, userAddress }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Trigger execution failed: ${res.status} ${text}`);
+    }
+    return res.json();
+  }
+
+  async emergencyExit(vaultId: string, userAddress: string): Promise<{
+    success: boolean;
+    txHash?: string;
+    error?: string;
+  }> {
+    const res = await fetch(`${this.baseURL}/api/vault/emergency-exit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vaultId, userAddress }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Emergency exit failed: ${res.status} ${text}`);
+    }
+    return res.json();
+  }
+
+  // Confidence and Safety Checks
+  async checkTriggerConditions(userAddress: string): Promise<Array<{
+    vaultId: string;
+    asset: string;
+    triggerType: 'stop_loss' | 'take_profit';
+    currentPrice: number;
+    triggerPrice: number;
+    confidence: number;
+    shouldExecute: boolean;
+    reason: string;
+    timestamp: string;
+  }>> {
+    const params = new URLSearchParams();
+    params.set('userAddress', userAddress);
+    const res = await fetch(`${this.baseURL}/api/vault/check-triggers?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Trigger check failed: ${res.status} ${text}`);
+    }
+    const json = await res.json();
+    return json?.data || [];
+  }
+
+  async getConfidenceBands(symbols: string[]): Promise<Array<{
+    symbol: string;
+    upperBound: number;
+    lowerBound: number;
+    confidence: number;
+    timestamp: string;
+  }>> {
+    const params = new URLSearchParams();
+    params.set('symbols', symbols.join(','));
+    const res = await fetch(`${this.baseURL}/api/pyth/confidence-bands?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Confidence bands failed: ${res.status} ${text}`);
+    }
+    const json = await res.json();
+    return json?.data || [];
+  }
 }
 
 const apiService = new APIService();

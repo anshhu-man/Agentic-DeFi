@@ -1,0 +1,25 @@
+{
+  "name": "agentic-defi",
+  "version": "1.0.0",
+  "description": "This repository has been reorganized into a literal three-level hierarchy:",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anshhu-man/Agentic-DeFi.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/anshhu-man/Agentic-DeFi/issues"
+  },
+  "homepage": "https://github.com/anshhu-man/Agentic-DeFi#readme",
+  "dependencies": {
+    "ethers": "5.8.0",
+    "node-fetch": "^3.3.2"
+  }
+}
