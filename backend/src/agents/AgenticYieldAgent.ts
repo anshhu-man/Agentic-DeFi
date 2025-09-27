@@ -406,50 +406,113 @@ export class AgenticYieldAgent {
         successfulExecutions: executionResults?.filter(r => r.success).length || 0,
       };
 
+      // Extract real data from opportunities for better summary
+      const topOpportunities = analysis.opportunities.slice(0, 3);
+      const opportunityDetails = topOpportunities.map(opp => ({
+        protocol: opp.protocol,
+        apy: opp.apy,
+        token: opp.tokenSymbol,
+        risk: opp.riskScore
+      }));
+
       const systemPrompt = `
-You are an AI assistant that creates concise summaries of agentic DeFi operations.
+You are a DeFi analysis expert that creates user-friendly summaries of yield optimization results.
 
-Create a clear, informative summary of what was accomplished:
-- User's intent and confidence level
-- Opportunities identified
-- Actions planned and executed
-- Key outcomes and results
+CRITICAL REQUIREMENTS:
+- Use ONLY real data provided (no placeholders like [X% APY] or [protocol name])
+- Write in clear, accessible language for end users
+- Focus on actionable insights and specific opportunities
+- Include actual protocol names, APY percentages, and token symbols
+- Structure the response for maximum readability
 
-Be specific about numbers and outcomes. Use a professional but accessible tone.
+Create a comprehensive but concise summary that includes:
+1. What was analyzed (user intent and confidence)
+2. Key opportunities found (specific protocols, APYs, tokens)
+3. Risk assessment and recommendations
+4. Next steps or actions planned
+
+Use a professional but friendly tone that makes DeFi accessible to users.
 `;
 
       const userPrompt = `
-Summarize this agentic DeFi operation:
-- Intent: ${intent.type} (${intent.confidence * 100}% confidence)
-- Opportunities found: ${analysis.opportunities.length}
-- Actions planned: ${actionPlan.actions.length}
+Create a user-friendly summary of this DeFi yield analysis:
+
+User Intent: ${intent.type} (${Math.round(intent.confidence * 100)}% confidence)
+Reasoning: ${intent.reasoning}
+
+Top Opportunities Found:
+${opportunityDetails.map(opp => 
+  `- ${opp.protocol}: ${opp.apy}% APY on ${opp.token} (Risk Score: ${opp.risk}/10)`
+).join('\n')}
+
+Action Plan:
+- ${actionPlan.actions.length} actions planned
 - Expected return: ${actionPlan.expectedReturn}
 - Risk score: ${actionPlan.riskScore}/100
-- Executed: ${executionResults ? 'Yes' : 'No'}
-- Successful executions: ${executionResults?.filter(r => r.success).length || 0}
+- Total gas cost: ${actionPlan.totalGasCost}
 
-Create a 2-3 sentence summary of the key outcomes.
+Execution Status: ${executionResults ? 
+  `${executionResults.filter(r => r.success).length}/${executionResults.length} actions executed successfully` : 
+  'Analysis complete, ready for execution'}
+
+Market Conditions:
+- Volatility: ${analysis.marketConditions.volatility}%
+- Market trend: ${analysis.marketConditions.marketTrend}
+- Gas price: ${analysis.marketConditions.gasPrice} gwei
+
+Create a 3-4 sentence summary that explains the key findings and recommendations in simple terms.
+Use specific data points and avoid any placeholder text.
 `;
 
       const summary = await this.promptService['mistral'].chatComplete({
         system: systemPrompt,
         user: userPrompt,
-        temperature: 0.3,
-        maxTokens: 200,
+        temperature: 0.2,
+        maxTokens: 300,
       });
 
-      return summary || this.generateFallbackSummary(context);
+      // Validate summary doesn't contain placeholders
+      if (summary && !this.containsPlaceholders(summary)) {
+        return summary;
+      }
+
+      return this.generateFallbackSummary(context, topOpportunities);
     } catch (error) {
       logger.error('Failed to generate AI summary', { error });
-      return this.generateFallbackSummary({
+      const fallbackContext = {
         intent: intent.type,
+        confidence: intent.confidence,
         actionCount: actionPlan.actions.length,
         opportunityCount: analysis.opportunities.length,
-      });
+        executed: !!executionResults,
+        successfulExecutions: executionResults?.filter(r => r.success).length || 0,
+      };
+      return this.generateFallbackSummary(fallbackContext, analysis.opportunities.slice(0, 3));
     }
   }
 
-  private generateFallbackSummary(context: any): string {
+  private containsPlaceholders(text: string): boolean {
+    const placeholderPatterns = [
+      /\[.*?\]/g,  // [placeholder text]
+      /\{.*?\}/g,  // {placeholder}
+      /X%/g,       // X%
+      /\$X/g,      // $X
+      /protocol.*?name/gi,
+      /top.*?performing/gi,
+      /lower.*?yielding/gi,
+    ];
+    
+    return placeholderPatterns.some(pattern => pattern.test(text));
+  }
+
+  private generateFallbackSummary(context: any, opportunities?: any[]): string {
+    if (opportunities && opportunities.length > 0) {
+      const topOpp = opportunities[0];
+      return `Analyzed ${context.opportunityCount} yield opportunities including ${topOpp.protocol} offering ${topOpp.apy}% APY on ${topOpp.token}. ` +
+             `Planned ${context.actionCount} blockchain actions with expected returns. ` +
+             `${context.executed ? `Successfully executed ${context.successfulExecutions} actions.` : 'Analysis complete, ready for execution.'}`;
+    }
+    
     return `Analyzed ${context.opportunityCount} yield opportunities for ${context.intent}. ` +
            `Planned ${context.actionCount} blockchain actions with expected returns. ` +
            `${context.executed ? `Successfully executed ${context.successfulExecutions} actions.` : 'Actions ready for execution.'}`;

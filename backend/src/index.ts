@@ -7,6 +7,10 @@ import { createServer } from 'http';
 
 import { config } from './config';
 import { logger } from './utils/logger';
+<<<<<<< HEAD
+=======
+import { prisma } from './utils/database';
+>>>>>>> b20b5f8 (prompt enhancement)
 
 // Import services
 import PythService from './services/PythService';
@@ -148,7 +152,11 @@ class AgenticExplorerServer {
 
         // Build response object
         const healthStatus = {
+<<<<<<< HEAD
           status: (pythHealthy) ? 'healthy' : 'unhealthy', // DB removed; derive health from Pyth
+=======
+          status: (databaseHealthy && pythHealthy) ? 'healthy' : 'unhealthy',
+>>>>>>> b20b5f8 (prompt enhancement)
           timestamp: new Date().toISOString(),
           services: {
             pyth: pythHealthy,
@@ -157,8 +165,13 @@ class AgenticExplorerServer {
           }
         };
 
+<<<<<<< HEAD
         // Overall health derived from Pyth service
         const allHealthy = pythHealthy;
+=======
+        // Only require core services (DB, Pyth) for overall health
+        const allHealthy = databaseHealthy && pythHealthy;
+>>>>>>> b20b5f8 (prompt enhancement)
         
         res.status(allHealthy ? 200 : 503).json(healthStatus);
       } catch (error) {
@@ -643,7 +656,10 @@ class AgenticExplorerServer {
   // Health check methods
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> b20b5f8 (prompt enhancement)
   private async checkPythHealth(): Promise<boolean> {
     try {
       return await this.pythService.isHealthy();
@@ -662,6 +678,12 @@ class AgenticExplorerServer {
 
   public async start(): Promise<void> {
     try {
+<<<<<<< HEAD
+=======
+      // Connect to database
+      await prisma.$connect();
+      logger.info('Database connected successfully');
+>>>>>>> b20b5f8 (prompt enhancement)
       
       // Start server
       this.server.listen(config.server.port, () => {
