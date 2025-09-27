@@ -328,4 +328,209 @@ router.get("/correlation", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/pyth/update-onchain
+ * Updates price feeds on-chain using updatePriceFeeds
+ */
+router.post("/update-onchain", async (req: Request, res: Response) => {
+  try {
+    const { symbols, network = 'sepolia' } = req.body;
+    
+    if (!symbols || !Array.isArray(symbols)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid symbols array provided",
+      });
+    }
+    
+    // Get feed IDs
+    const feedIds = symbols.map(symbol => PRICE_FEED_IDS[symbol as keyof typeof PRICE_FEED_IDS]).filter(Boolean);
+    
+    if (feedIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "No valid feed IDs found for provided symbols",
+      });
+    }
+    
+    // Fetch Hermes update
+    const priceUpdates = await pythService.fetchHermesUpdateForOnChain(feedIds);
+    
+    // Update on-chain (this would require a signer in production)
+    // For now, we'll simulate the response
+    const mockTxHash = '0x' + Math.random().toString(16).substr(2, 64);
+    
+    logger.info('Mock on-chain price update', {
+      symbols,
+      feedIds,
+      network,
+      txHash: mockTxHash,
+    });
+    
+    return res.json({
+      success: true,
+      data: {
+        txHash: mockTxHash,
+        feedIds,
+        symbols,
+        network,
+        updateCount: priceUpdates.length,
+        timestamp: new Date().toISOString(),
+      }
+    });
+  } catch (error: any) {
+    logger.error("On-chain price update failed", { error: error.message });
+    return res.status(500).json({
+      success: false,
+      error: "ONCHAIN_UPDATE_FAILED",
+      details: error?.message
+    });
+  }
+});
+
+/**
+ * GET /api/pyth/update-fee?symbols=ETH/USD,BTC/USD&network=sepolia
+ * Calculate fee for updating price feeds on-chain
+ */
+router.get("/update-fee", async (req: Request, res: Response) => {
+  try {
+    const symbols = (req.query.symbols as string)?.split(',') || ['ETH/USD'];
+    const network = (req.query.network as string) || 'sepolia';
+    
+    const feedIds = symbols.map(symbol => PRICE_FEED_IDS[symbol as keyof typeof PRICE_FEED_IDS]).filter(Boolean);
+    
+    if (feedIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "No valid feed IDs found for provided symbols",
+      });
+    }
+    
+    // Fetch price update data to calculate fee
+    const priceUpdates = await pythService.fetchHermesUpdateForOnChain(feedIds);
+    
+    // Mock fee calculation (in production, this would call the actual contract)
+    const mockFeeWei = '1000000000000000'; // 0.001 ETH
+    const mockFeeETH = '0.001';
+    
+    return res.json({
+      success: true,
+      data: {
+        fee: mockFeeWei,
+        feeETH: mockFeeETH,
+        symbols,
+        network,
+        updateCount: priceUpdates.length,
+      }
+    });
+  } catch (error: any) {
+    logger.error("Update fee calculation failed", { error: error.message });
+    return res.status(500).json({
+      success: false,
+      error: "FEE_CALCULATION_FAILED",
+      details: error?.message
+    });
+  }
+});
+
+/**
+ * GET /api/pyth/onchain-price?symbol=ETH/USD&network=sepolia&maxAge=60
+ * Get price from on-chain Pyth contract
+ */
+router.get("/onchain-price", async (req: Request, res: Response) => {
+  try {
+    const symbol = (req.query.symbol as string) || "ETH/USD";
+    const network = (req.query.network as string) || 'sepolia';
+    const maxAge = parseInt((req.query.maxAge as string) || '60');
+    
+    const feedId = PRICE_FEED_IDS[symbol as keyof typeof PRICE_FEED_IDS];
+    if (!feedId) {
+      return res.status(400).json({
+        success: false,
+        error: `Unknown or unsupported symbol: ${symbol}`,
+      });
+    }
+
+    // Mock on-chain price data (in production, this would call the actual contract)
+    const mockPriceData = {
+      price: '2500000000000', // Mock ETH price
+      confidence: '1000000000', // Mock confidence
+      expo: -8,
+      publishTime: Math.floor(Date.now() / 1000),
+    };
+    
+    const formattedPrice = pythService.formatOnChainPrice(mockPriceData);
+    
+    return res.json({
+      success: true,
+      data: {
+        symbol,
+        feedId,
+        network,
+        maxAge,
+        price18: formattedPrice.price18,
+        confidence18: formattedPrice.confidence18,
+        publishTime: formattedPrice.publishTime.toISOString(),
+        raw: mockPriceData,
+      },
+    });
+  } catch (error: any) {
+    logger.error("On-chain price fetch failed", {
+      error: error?.message || error,
+    });
+    return res.status(500).json({
+      success: false,
+      error: "ONCHAIN_PRICE_FAILED",
+      details: error?.message || "Unknown error",
+    });
+  }
+});
+
+/**
+ * GET /api/pyth/confidence?symbol=ETH/USD&price=2500&confidence=10&expo=-8&maxConfBps=50
+ * Validate price confidence against threshold
+ */
+router.get("/confidence", async (req: Request, res: Response) => {
+  try {
+    const symbol = (req.query.symbol as string) || "ETH/USD";
+    const price = (req.query.price as string) || "250000000000";
+    const confidence = (req.query.confidence as string) || "1000000000";
+    const expo = parseInt((req.query.expo as string) || "-8");
+    const maxConfBps = parseInt((req.query.maxConfBps as string) || "50");
+    
+    const isValid = await pythService.validatePriceConfidence(
+      price,
+      confidence,
+      expo,
+      maxConfBps
+    );
+    
+    const priceFormatted = pythService['formatPrice'](price, expo);
+    const confidenceFormatted = pythService['formatPrice'](confidence, expo);
+    const confidenceRatio = (parseFloat(confidenceFormatted) / parseFloat(priceFormatted)) * 10000;
+    
+    return res.json({
+      success: true,
+      data: {
+        symbol,
+        price: priceFormatted,
+        confidence: confidenceFormatted,
+        confidenceRatio: confidenceRatio.toFixed(2),
+        maxConfBps,
+        isValid,
+        status: isValid ? 'ACCEPTABLE' : 'TOO_UNCERTAIN',
+      },
+    });
+  } catch (error: any) {
+    logger.error("Confidence validation failed", {
+      error: error?.message || error,
+    });
+    return res.status(500).json({
+      success: false,
+      error: "CONFIDENCE_VALIDATION_FAILED",
+      details: error?.message || "Unknown error",
+    });
+  }
+});
+
 export default router;

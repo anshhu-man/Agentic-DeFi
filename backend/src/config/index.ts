@@ -132,4 +132,35 @@ export const PRICE_FEED_IDS = {
   'DAI/USD': '0xb0948a5e5313200c632b51bb5ca32f6de0d36e9950a942d19751e833f70dabfd',
 };
 
+// Vault configuration
+export const vaultConfig = {
+  networks: {
+    sepolia: {
+      pythContract: '0xDd24F84d36BF92C65F92307595335bdFab5Bbd21',
+      rpcUrl: process.env.SEPOLIA_RPC_URL || 'https://sepolia.infura.io/v3/YOUR_KEY',
+      explorerUrl: 'https://sepolia.etherscan.io',
+      chainId: 11155111,
+    },
+    ethereum: {
+      pythContract: '0x4305FB66699C3B2702D4d05CF36551390A4c69C6',
+      rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://mainnet.infura.io/v3/YOUR_KEY',
+      explorerUrl: 'https://etherscan.io',
+      chainId: 1,
+    },
+  },
+  defaultNetwork: process.env.VAULT_DEFAULT_NETWORK || 'sepolia',
+  monitoringEnabled: process.env.VAULT_MONITORING_ENABLED === 'true',
+  maxConfidenceBps: parseInt(process.env.VAULT_MAX_CONFIDENCE_BPS || '50'),
+  maxStalenessSeconds: parseInt(process.env.VAULT_MAX_STALENESS_SECONDS || '60'),
+  ethFeedId: PRICE_FEED_IDS['ETH/USD'],
+  executionBotEnabled: process.env.VAULT_EXECUTION_BOT_ENABLED === 'true',
+  monitoringIntervalMs: parseInt(process.env.VAULT_MONITORING_INTERVAL_MS || '30000'),
+};
+
+// ETH-focused price feeds for vault
+export const ETH_PRICE_FEEDS = {
+  'ETH/USD': PRICE_FEED_IDS['ETH/USD'],
+  'WETH/USD': PRICE_FEED_IDS['ETH/USD'], // Same as ETH/USD
+};
+
 export default config;
