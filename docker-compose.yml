@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    environment:
+      # Server Configuration
+      PORT: 3000
+      NODE_ENV: development
+      
+      # Database
+      DATABASE_URL: "postgresql://username:password@postgres:5432/agentic_explorer"
+      
+      # API Keys
+      ALCHEMY_API_KEY: ${ALCHEMY_API_KEY:-your_alchemy_api_key_here}
+      GRAPH_API_KEY: ${GRAPH_API_KEY:-your_graph_api_key_here}
+      
+      # Mistral model config
+      MISTRAL_API_KEY: "LnPTmn3hI1k3IrZ6GK96q4CNlp3YWsTX"
+      MISTRAL_MODEL: mistral-medium
+      
+      # Pyth Network
+      PYTH_NETWORK_ENDPOINT: https://hermes.pyth.network
+      PYTH_HISTORY_ENDPOINT: ""
+      PYTH_HISTORY_API_KEY_HEADER: ""
+      PYTH_HISTORY_API_KEY: ""
+      
+      # Supabase
+      SUPABASE_URL: https://dgybcbbsjdaolsrxrlkz.supabase.co
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRneWJjYmJzamRhb2xzcnhybGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcyNDkwNDUsImV4cCI6MjA3MjgyNTA0NX0.simh2-euf-bgBCrc6f0YFY4DaN6IFFOVyZ_9yqgCFV0
+      
+      # JWT Secret
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_here}
+      
+      # Supported Chain IDs
+      ETHEREUM_CHAIN_ID: 1
+      POLYGON_CHAIN_ID: 137
+      ROOTSTOCK_CHAIN_ID: 30
+      
+      # External API Endpoints
+      UNISWAP_SUBGRAPH_URL: https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3
+      AAVE_SUBGRAPH_URL: https://api.thegraph.com/subgraphs/name/aave/protocol-v3
+      COMPOUND_SUBGRAPH_URL: https://api.thegraph.com/subgraphs/name/graphprotocol/compound-v2
+      
+      # Hyperlane Configuration
+      HYPERLANE_ENVIRONMENT: testnet
+      
+      # Rate Limiting
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      
+      # WebSocket Configuration
+      WS_PORT: 3001
+      
+      # Logging
+      LOG_LEVEL: info
+      GRAPH_DISABLED: "true"
+      
+      # Feature flags
+      ANALYZE_FASTPATH_ENABLED: "false"
+      ENABLE_EXECUTION: "false"
+      
+      # Blockchain RPC Endpoints
+      ETHEREUM_RPC_URL: https://ethereum.publicnode.com
+      POLYGON_RPC_URL: https://polygon-rpc.com
+      
+      # Enhanced 1inch Integration
+      ONEINCH_API_KEY: 3vQIV0GfI96PbXsUibTAWftGrdtUWKx6
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
