@@ -1,4 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
+import https from 'https';
 import { logger } from '../utils/logger';
 
 // Enhanced 1inch Service Types
@@ -138,20 +139,40 @@ export class Enhanced1InchService {
   
   constructor(chainId: number = 1, apiKey?: string) {
     this.chainId = chainId;
+<<<<<<< HEAD
     this.apiKey = apiKey || process.env.ONEINCH_API_KEY;
     if (!this.apiKey) {
       logger.warn('ONEINCH_API_KEY not set; some 1inch.dev endpoints may fail or be rate limited');
     }
+=======
+    // Use provided API key or get from environment
+    this.apiKey = apiKey || process.env.ONEINCH_API_KEY;
+    
+    logger.info('Enhanced1InchService initialized', {
+      chainId: this.chainId,
+      hasApiKey: !!this.apiKey,
+      apiKeyLength: this.apiKey ? this.apiKey.length : 0
+    });
+>>>>>>> b20b5f8 (prompt enhancement)
   }
 
   private getHeaders() {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     };
 
     if (this.apiKey) {
       headers['Authorization'] = `Bearer ${this.apiKey}`;
+<<<<<<< HEAD
       headers['X-API-KEY'] = this.apiKey;
+=======
+      logger.debug('Using API key for 1inch request', { 
+        keyPrefix: this.apiKey.substring(0, 8) + '...' 
+      });
+    } else {
+      logger.warn('No 1inch API key configured - requests may be rate limited');
+>>>>>>> b20b5f8 (prompt enhancement)
     }
 
     return headers;
@@ -159,10 +180,22 @@ export class Enhanced1InchService {
 
   private async makeRequest<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
     try {
+      // Create HTTPS agent that ignores SSL certificate issues (for development)
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false, // This fixes the self-signed certificate issue
+      });
+
       const response: AxiosResponse<T> = await axios.get(`${this.baseUrl}${endpoint}`, {
         params,
         headers: this.getHeaders(),
         timeout: 30000,
+        httpsAgent, // Use the custom HTTPS agent
+      });
+      
+      logger.info('1inch API request successful', {
+        endpoint,
+        status: response.status,
+        hasData: !!response.data
       });
       
       return response.data;
@@ -171,6 +204,7 @@ export class Enhanced1InchService {
         endpoint,
         params,
         error: error instanceof Error ? error.message : 'Unknown error',
+        hasApiKey: !!this.apiKey
       });
       throw error;
     }

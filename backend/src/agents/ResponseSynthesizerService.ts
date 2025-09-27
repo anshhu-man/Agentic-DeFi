@@ -79,59 +79,147 @@ export class ResponseSynthesizerService {
     intent: string
   ): Promise<string> {
     try {
+      // Extract real data from results for better context
       const dataContext = results.map(result => ({
         agent: result.agentType,
         success: result.success,
         dataType: typeof result.data,
         hasData: !!result.data,
+        dataPreview: this.extractDataPreview(result.data, result.agentType),
       }));
 
       const systemPrompt = `
-You are an AI assistant that creates concise, informative summaries of DeFi analysis results.
-Based on the agent results provided, create a clear summary that explains the key findings.
+You are a DeFi analysis expert that creates user-friendly summaries of analysis results.
+
+CRITICAL REQUIREMENTS:
+- Use ONLY real data provided (no placeholders like [X% APY] or [protocol name])
+- Write in clear, accessible language for end users
+- Focus on actionable insights and specific opportunities
+- Include actual protocol names, APY percentages, and token symbols when available
+- Structure the response for maximum readability
+- Avoid technical jargon and make DeFi concepts accessible
 
 Context:
 - Primary intent: ${intent}
 - Agent results: ${JSON.stringify(dataContext)}
 
-Guidelines:
-- Be concise but informative (2-3 sentences max)
-- Focus on actionable insights
-- Use plain language, avoid technical jargon
-- Highlight the most important findings
-- If multiple agents provided data, synthesize the key points
+Create a comprehensive but concise summary that includes:
+1. What was analyzed and found
+2. Key opportunities or insights (with specific data points)
+3. Important considerations or risks
+4. Clear next steps or recommendations
+
+Use a professional but friendly tone that makes DeFi accessible to users.
 `;
 
       const userPrompt = `
-Summarize the key findings from these DeFi analysis results:
-${results.map(r => `${r.agentType}: ${r.success ? 'Success' : 'Failed'}`).join(', ')}
+Create a user-friendly summary of these DeFi analysis results:
 
-Create a summary that helps the user understand what was found and what they should know.
+Analysis Type: ${intent}
+Successful Agents: ${results.filter(r => r.success).map(r => r.agentType).join(', ')}
+
+Agent Results Summary:
+${results.map(r => {
+  if (r.success && r.data) {
+    const preview = this.extractDataPreview(r.data, r.agentType);
+    return `${r.agentType}: Success - ${preview}`;
+  }
+  return `${r.agentType}: ${r.success ? 'Success' : 'Failed'}`;
+}).join('\n')}
+
+Create a 3-4 sentence summary that explains the key findings and recommendations in simple terms.
+Use specific data points when available and avoid any placeholder text.
+Focus on what the user should know and what actions they might consider.
 `;
 
-      const summary =
-        (await this.mistral.chatComplete({
-          system: systemPrompt,
-          user: userPrompt,
-          temperature: 0.3,
-          maxTokens: 200,
-        })) || this.generateFallbackSummary(results, intent);
+      const summary = await this.mistral.chatComplete({
+        system: systemPrompt,
+        user: userPrompt,
+        temperature: 0.2,
+        maxTokens: 300,
+      });
 
-      return summary;
+      // Validate summary doesn't contain placeholders
+      if (summary && !this.containsPlaceholders(summary)) {
+        return summary;
+      }
+
+      return this.generateFallbackSummary(results, intent);
     } catch (error) {
       logger.error('Failed to generate AI summary', { error });
       return this.generateFallbackSummary(results, intent);
     }
   }
 
+  private extractDataPreview(data: any, agentType: string): string {
+    if (!data) return 'No data available';
+
+    try {
+      switch (agentType) {
+        case 'yield':
+          if (Array.isArray(data) && data.length > 0) {
+            const topOpp = data[0];
+            return `Found ${data.length} opportunities, top: ${topOpp.protocol} ${topOpp.apy}% APY on ${topOpp.tokenSymbol}`;
+          }
+          break;
+        case 'risk':
+          if (data.overallRiskScore !== undefined) {
+            return `Risk score: ${data.overallRiskScore}/10`;
+          }
+          break;
+        case 'governance':
+          if (Array.isArray(data) && data.length > 0) {
+            const activeCount = data.filter((p: any) => p.status === 'active').length;
+            return `Found ${data.length} proposals, ${activeCount} active`;
+          }
+          break;
+        default:
+          if (Array.isArray(data)) {
+            return `Found ${data.length} items`;
+          }
+          return 'Data available';
+      }
+    } catch (error) {
+      return 'Data processing error';
+    }
+
+    return 'Data available';
+  }
+
+  private containsPlaceholders(text: string): boolean {
+    const placeholderPatterns = [
+      /\[.*?\]/g,  // [placeholder text]
+      /\{.*?\}/g,  // {placeholder}
+      /X%/g,       // X%
+      /\$X/g,      // $X
+      /protocol.*?name/gi,
+      /top.*?performing/gi,
+      /lower.*?yielding/gi,
+    ];
+    
+    return placeholderPatterns.some(pattern => pattern.test(text));
+  }
+
   private generateFallbackSummary(results: AgentResult[], intent: string): string {
     const successfulAgents = results.filter(r => r.success).map(r => r.agentType);
     
+    // Try to extract real data for fallback
+    const yieldResult = results.find(r => r.agentType === 'yield' && r.success);
+    const riskResult = results.find(r => r.agentType === 'risk' && r.success);
+    
     switch (intent) {
       case 'yield_comparison':
+        if (yieldResult?.data && Array.isArray(yieldResult.data) && yieldResult.data.length > 0) {
+          const topOpp = yieldResult.data[0];
+          return `Found ${yieldResult.data.length} yield opportunities with ${topOpp.protocol} offering ${topOpp.apy}% APY on ${topOpp.tokenSymbol} as the top option. Analysis includes current rates, risk assessments, and cross-chain comparisons.`;
+        }
         return `Found yield opportunities across ${successfulAgents.length} data source${successfulAgents.length > 1 ? 's' : ''}. Analysis includes current rates, risk assessments, and cross-chain comparisons.`;
       
       case 'risk_analysis':
+        if (riskResult?.data?.overallRiskScore !== undefined) {
+          const riskLevel = riskResult.data.overallRiskScore > 7 ? 'high' : riskResult.data.overallRiskScore > 4 ? 'medium' : 'low';
+          return `Completed risk analysis showing ${riskLevel} risk level with score of ${riskResult.data.overallRiskScore}/10. Key risk factors have been identified with actionable recommendations.`;
+        }
         return `Completed risk analysis covering portfolio health, liquidation risks, and diversification metrics. Key risk factors have been identified with actionable recommendations.`;
       
       case 'governance':

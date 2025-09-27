@@ -10,10 +10,13 @@ import { logger } from './utils/logger';
 
 // Import services
 import PythService from './services/PythService';
+import EnhancedPythService from './services/EnhancedPythService';
 import GraphService from './services/GraphService';
+import EnhancedGraphService from './services/EnhancedGraphService';
 import AgenticOrchestrator from './services/AgenticOrchestrator';
 import { NetworkConfigService, ChainId } from './services/NetworkConfigService';
 import TransactionMonitor from './services/TransactionMonitorService';
+import { NetworkConfig } from './utils/networkConfig';
 import { ethers } from 'ethers';
 
 // Import agents
@@ -31,6 +34,23 @@ import pythController from './controllers/pythController';
 import chatController from './controllers/chatController';
 import enhancedChatController from './controllers/enhancedChatController';
 import txController from './controllers/txController';
+import vaultController from './controllers/vaultController';
+
+// Global error handlers to prevent unhandled crashes
+process.on('unhandledRejection', (err: any) => {
+  logger.error('Unhandled promise rejection', { 
+    error: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined
+  });
+});
+
+process.on('uncaughtException', (err: any) => {
+  logger.error('Uncaught exception', { 
+    error: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined
+  });
+  process.exit(1);
+});
 
 class AgenticExplorerServer {
   private app: express.Application;
@@ -69,6 +89,10 @@ class AgenticExplorerServer {
   private initializeServices(): void {
     logger.info('Initializing services...');
     
+    // Initialize network configuration first
+    NetworkConfig.getInstance();
+    
+    // Use PythService with enhanced error handling
     this.pythService = new PythService();
     this.graphService = new GraphService();
     this.networkConfigService = new NetworkConfigService();
@@ -148,7 +172,7 @@ class AgenticExplorerServer {
 
         // Build response object
         const healthStatus = {
-          status: (pythHealthy) ? 'healthy' : 'unhealthy', // DB removed; derive health from Pyth
+          status: (pythHealthy) ? 'healthy' : 'unhealthy',
           timestamp: new Date().toISOString(),
           services: {
             pyth: pythHealthy,
@@ -179,6 +203,7 @@ class AgenticExplorerServer {
     this.app.use('/api/chat', chatController);
     this.app.use('/api/chat', enhancedChatController);
     this.app.use('/api/tx', txController);
+    this.app.use('/api/vault', vaultController);
 
     // Main query endpoint
     this.app.post('/api/query', async (req, res) => {
@@ -641,9 +666,6 @@ class AgenticExplorerServer {
   }
 
   // Health check methods
-
-
-
   private async checkPythHealth(): Promise<boolean> {
     try {
       return await this.pythService.isHealthy();
@@ -661,20 +683,48 @@ class AgenticExplorerServer {
   }
 
   public async start(): Promise<void> {
-    try {
-      
-      // Start server
-      this.server.listen(config.server.port, () => {
-        logger.info(`🚀 Agentic Meta-Protocol Explorer Backend started`, {
-          port: config.server.port,
-          environment: config.server.nodeEnv,
-          wsPort: config.server.wsPort
+    const startPort = config.server.port;
+    let currentPort = startPort;
+    const maxRetries = 5;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          // Add server error handler for EADDRINUSE
+          this.server.on('error', (err: any) => {
+            if (err && err.code === 'EADDRINUSE') {
+              logger.warn(`Port ${currentPort} in use, trying next port...`);
+              reject(err);
+            } else {
+              logger.error('HTTP server error', { error: err });
+              reject(err);
+            }
+          });
+
+          this.server.listen(currentPort, () => {
+            logger.info(`🚀 Agentic Meta-Protocol Explorer Backend started`, {
+              port: currentPort,
+              environment: config.server.nodeEnv,
+              wsPort: config.server.wsPort,
+              attemptedPort: startPort !== currentPort ? startPort : undefined
+            });
+            resolve();
+          });
         });
-      });
-      
-    } catch (error) {
-      logger.error('Failed to start server', { error });
-      process.exit(1);
+        
+        // If we get here, server started successfully
+        break;
+        
+      } catch (error: any) {
+        if (error.code === 'EADDRINUSE' && attempt < maxRetries - 1) {
+          currentPort++;
+          logger.info(`Retrying on port ${currentPort}...`);
+          continue;
+        }
+        
+        logger.error('Failed to start server', { error, port: currentPort });
+        process.exit(1);
+      }
     }
   }
 
