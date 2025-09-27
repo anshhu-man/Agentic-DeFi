@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { MessageCircle, X, Send, TrendingUp, BarChart3, PieChart, LineChart, Maximize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,9 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { ChartGenerator } from './ChartGenerator';
 import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/contexts/ChatContext';
-import apiService from '@/services/api';
-import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface ChatWidgetProps {
   onFullScreen?: () => void;
@@ -21,124 +20,42 @@ const ChatWidget = ({ onFullScreen }: ChatWidgetProps) => {
   const [inputValue, setInputValue] = useState('');
   const { user } = useAuth();
   const { toast } = useToast();
-  const { messages, addMessage, isGenerating, setIsGenerating, setMessages } = useChat();
-
-  // Load chat history from Supabase via backend when available
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const uid = user?.id || session?.user?.id;
-        const token = session?.access_token;
-        if (!uid || !token) return;
-
-        const rows = await apiService.getChatHistory(uid, token, 50);
-        const mapped: { id: string; type: 'user' | 'assistant'; content: string; timestamp: number }[] =
-          (rows || []).reverse().map((row: any) => ({
-            id: row.id || `${Date.now()}-${Math.random()}`,
-            type: row.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-            content: String(row.content ?? ''),
-            timestamp: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
-          }));
-        if (mapped.length > 0) {
-          setMessages(mapped);
-        }
-      } catch (e) {
-        // ignore history load errors in UI
-        console.debug('Chat history load skipped:', e);
-      }
-    })();
-  }, [user?.id, setMessages]);
+  const { messages, addMessage, isGenerating, setIsGenerating } = useChat();
 
   const generateChart = async (query: string): Promise<{ chartType: string; data: any } | null> => {
     try {
-      const res = await apiService.query({ query, userAddress: user?.id || undefined });
-      if (res?.success && res?.data?.results) {
-        const viz = res.data.results.visualizations?.find((v: any) => (v.type === 'chart') || v?.config?.chartType) || null;
-        const mapped = viz ? mapVisualizationToChart(viz) : null;
-        if (mapped) return mapped;
+      // Call AI portfolio chat function
+      const { data, error } = await supabase.functions.invoke('ai-portfolio-chat', {
+        body: {
+          message: query,
+          user_id: user?.id,
+        }
+      });
+
+      if (error) {
+        console.error('Error calling AI chat:', error);
+        throw new Error(error.message);
       }
-      // Fallback to simple pattern matching if backend didn't return usable chart
+
+      const result = await data;
+      
+      if (result.success && result.chartData) {
+        return {
+          chartType: result.chartType,
+          data: result.chartData
+        };
+      }
+
+      // Fallback to simple pattern matching if AI doesn't return chart data
       return generateFallbackChart(query);
     } catch (error) {
-      console.error('Error getting backend chart:', error);
+      console.error('Error in AI chat:', error);
       toast({
         variant: "destructive",
         title: "AI Error",
         description: "Using fallback chart generation",
       });
       return generateFallbackChart(query);
-    }
-  };
-
-  const mapVisualizationToChart = (viz: any): { chartType: string; data: any } | null => {
-    try {
-      if (!viz) return null;
-      const type = viz?.config?.chartType || viz?.type;
-      const data = viz?.data || [];
-      switch (type) {
-        case 'bar': {
-          if (Array.isArray(data) && data.length > 0) {
-            if ('protocol' in data[0] && 'apy' in data[0]) {
-              return {
-                chartType: 'bar',
-                data: data.map((d: any) => ({
-                  category: d.protocol ?? d.label ?? 'Item',
-                  value: typeof d.apy === 'string' ? parseFloat(d.apy) : d.apy,
-                })),
-              };
-            }
-            if ('category' in data[0] && 'value' in data[0]) {
-              return { chartType: 'bar', data };
-            }
-          }
-          return null;
-        }
-        case 'line': {
-          if (Array.isArray(data) && data.length > 0) {
-            if ('time' in data[0] && 'value' in data[0]) {
-              return { chartType: 'line', data: data.map((d: any) => ({ month: d.time, value: d.value })) };
-            }
-            if ('timestamp' in data[0] && 'value' in data[0]) {
-              return { chartType: 'line', data: data.map((d: any) => ({ month: d.timestamp, value: d.value })) };
-            }
-          }
-          return null;
-        }
-        case 'area': {
-          if (Array.isArray(data) && data.length > 0) {
-            if ('time' in data[0] && 'portfolio' in data[0]) {
-              return { chartType: 'area', data };
-            }
-            if ('time' in data[0] && 'value' in data[0]) {
-              return { chartType: 'area', data: data.map((d: any) => ({ time: d.time, portfolio: d.value })) };
-            }
-          }
-          return null;
-        }
-        case 'pie': {
-          if (Array.isArray(data) && data.length > 0) {
-            if ('name' in data[0] && 'value' in data[0]) {
-              return { chartType: 'pie', data };
-            }
-            if ('label' in data[0] && 'value' in data[0]) {
-              return {
-                chartType: 'pie',
-                data: data.map((d: any, i: number) => ({
-                  name: d.label,
-                  value: d.value,
-                  fill: ['hsl(var(--primary))', 'hsl(var(--accent))', 'hsl(var(--muted))'][i % 3],
-                })),
-              };
-            }
-          }
-          return null;
-        }
-        default:
-          return null;
-      }
-    } catch {
-      return null;
     }
   };
 
@@ -200,34 +117,44 @@ const ChatWidget = ({ onFullScreen }: ChatWidgetProps) => {
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
-    const userText = inputValue;
     addMessage({
       type: 'user',
-      content: userText
+      content: inputValue
     });
 
     setInputValue('');
     setIsGenerating(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      const uid = user?.id || session?.user?.id;
+      // First try AI-powered response
+      const { data, error } = await supabase.functions.invoke('ai-portfolio-chat', {
+        body: {
+          message: inputValue,
+          user_id: user?.id,
+        }
+      });
 
-      const res = await apiService.postChat(userText, uid, token);
-      if (res?.success && res?.data?.reply) {
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const result = await data;
+      
+      if (result.success) {
         addMessage({
           type: 'assistant',
-          content: res.data.reply,
+          content: result.response,
+          chartData: result.chartData,
+          chartType: result.chartType
         });
       } else {
-        throw new Error('AI response failed');
+        throw new Error(result.error || 'AI response failed');
       }
     } catch (error) {
       console.error('Error getting AI response:', error);
       
       // Fallback to chart generation only
-      const chartResult = await generateChart(userText);
+      const chartResult = await generateChart(inputValue);
       
       addMessage({
         type: 'assistant',

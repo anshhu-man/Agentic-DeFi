@@ -138,18 +138,22 @@ export class Enhanced1InchService {
   
   constructor(chainId: number = 1, apiKey?: string) {
     this.chainId = chainId;
-    this.apiKey = apiKey;
+    this.apiKey = apiKey || process.env.ONEINCH_API_KEY;
+    if (!this.apiKey) {
+      logger.warn('ONEINCH_API_KEY not set; some 1inch.dev endpoints may fail or be rate limited');
+    }
   }
 
   private getHeaders() {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    
+
     if (this.apiKey) {
       headers['Authorization'] = `Bearer ${this.apiKey}`;
+      headers['X-API-KEY'] = this.apiKey;
     }
-    
+
     return headers;
   }
 

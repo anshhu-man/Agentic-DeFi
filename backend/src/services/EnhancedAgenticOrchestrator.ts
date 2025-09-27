@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger';
-import { BlockchainActionService } from './BlockchainActionService';
+import { BlockchainActionService, SwapParams } from './BlockchainActionService';
 import { AgenticPromptService } from './AgenticPromptService';
 import { NetworkConfigService, ChainId } from './NetworkConfigService';
 import { 
@@ -9,12 +9,16 @@ import {
   TransactionDetails,
   ValidationResult
 } from '../types';
-import { SwapParams } from './BlockchainActionService';
+import NetworkSelectionService from './NetworkSelectionService';
+import AaveV3Adapter from './protocols/AaveV3Adapter';
+import { ethers } from 'ethers';
 
 export class EnhancedAgenticOrchestrator {
   private blockchainService: BlockchainActionService;
   private promptService: AgenticPromptService;
   private networkService: NetworkConfigService;
+  private selectionService: NetworkSelectionService;
+  private aaveAdapter: AaveV3Adapter;
   
   constructor(
     blockchainService: BlockchainActionService,
@@ -23,6 +27,8 @@ export class EnhancedAgenticOrchestrator {
     this.blockchainService = blockchainService;
     this.promptService = promptService;
     this.networkService = new NetworkConfigService();
+    this.selectionService = new NetworkSelectionService();
+    this.aaveAdapter = new AaveV3Adapter();
   }
   
   async processExecuteWithApprovalRequest(request: OrchestrationRequest): Promise<OrchestrationResponse> {
@@ -34,7 +40,7 @@ export class EnhancedAgenticOrchestrator {
       });
 
       // 1. Determine the best network for the actions (Ethereum or Polygon)
-      const bestNetwork = this.determineBestNetwork(request);
+      const bestNetwork = await this.determineBestNetwork(request);
       
       // 2. Switch to the appropriate network
       await this.blockchainService.switchNetwork(bestNetwork.chainId);
@@ -147,18 +153,41 @@ export class EnhancedAgenticOrchestrator {
           
           // Handle other action types (stake, add_liquidity, etc.)
           else if (action.type === 'stake') {
-            // Implementation for staking actions
-            results.push({
-              type: 'stake',
-              status: 'needs_signature',
-              transaction: {
-                to: action.parameters.protocol,
-                data: '0x', // Would be actual contract call data
-                value: '0'
-              },
-              description: `Stake ${action.parameters.amount} tokens in ${action.parameters.protocol}`,
-              estimatedGas: '150000'
-            });
+            // Use protocol adapters when available (Aave V3 as first adapter)
+            if (String(action.protocol || '').toLowerCase().includes('aave')) {
+              const chainId = this.blockchainService['currentChainId'];
+              const asset = action.parameters.pool || action.parameters.asset;
+              const amount = action.parameters.amount || '0';
+              const amountWei = ethers.utils.parseUnits(String(amount), 18).toString();
+
+              const prepared = await this.aaveAdapter.prepareSupply({
+                chainId,
+                asset,
+                amount: amountWei,
+                onBehalfOf: userAddress
+              });
+
+              results.push({
+                type: 'stake',
+                status: 'needs_signature',
+                transaction: prepared,
+                description: `Supply ${amount} to Aave on chain ${chainId}`,
+                estimatedGas: prepared.gas || '150000'
+              });
+            } else {
+              // Fallback stub if adapter not available
+              results.push({
+                type: 'stake',
+                status: 'needs_signature',
+                transaction: {
+                  to: action.parameters.protocol,
+                  data: '0x',
+                  value: '0'
+                },
+                description: `Stake ${action.parameters.amount} tokens in ${action.parameters.protocol}`,
+                estimatedGas: '150000'
+              });
+            }
           }
           
           // Add more action types as needed
@@ -195,20 +224,15 @@ export class EnhancedAgenticOrchestrator {
   }
   
   // Helper methods
-  private determineBestNetwork(request: OrchestrationRequest): any {
-    // Logic to determine whether to use Ethereum or Polygon
-    // Based on gas costs, available liquidity, transaction size, etc.
-    
-    const gasThreshold = 50; // USD threshold for gas costs
-    const transactionSize = this.estimateTransactionSize(request);
-    
-    // For smaller transactions or high gas periods, prefer Polygon
-    if (transactionSize < 1000 || gasThreshold > 30) {
-      return this.networkService.getNetworkConfig(ChainId.POLYGON);
+  private async determineBestNetwork(request: OrchestrationRequest): Promise<any> {
+    // Use scoring-based selection; fallback to ETH on failure
+    try {
+      const txSizeUSD = this.estimateTransactionSize(request);
+      const choice = await this.selectionService.chooseBestNetwork({ txSizeUSD });
+      return this.networkService.getNetworkConfig(choice.chainId);
+    } catch {
+      return this.networkService.getNetworkConfig(ChainId.ETHEREUM);
     }
-    
-    // For larger transactions, use Ethereum for better liquidity
-    return this.networkService.getNetworkConfig(ChainId.ETHEREUM);
   }
   
   private estimateTransactionSize(request: OrchestrationRequest): number {

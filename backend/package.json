@@ -5,10 +5,26 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon -r ts-node/register/transpile-only -r tsconfig-paths/register src/index.ts",
+    "dev:3000": "PORT=3000 nodemon -r ts-node/register/transpile-only -r tsconfig-paths/register src/index.ts",
+    "dev:3001": "PORT=3001 nodemon -r ts-node/register/transpile-only -r tsconfig-paths/register src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "jest",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "test:preflight": "node test-preflight-check.js",
+    "test:api-simple": "node test-api-endpoints-simple.js",
+    "test:analyze-endpoint": "node test-analyze-endpoint.js",
+    "test:analyze-only": "node test-analyze-only-comprehensive.js",
+    "test:query-formats": "node test-query-response-formats.js",
+    "test:direct-query": "node test-query-direct.js",
+    "test:execute-approval": "node test-execute-approval-comprehensive.js",
+    "test:execute-with-approval": "node test-execute-with-approval.js",
+    "test:1inch-enhanced": "node test-enhanced-1inch-integration.js",
+    "pipeline:3000": "zsh -c 'PORT=3000 npm run dev & echo $! > .server3000.pid && node test-server-ready.js && npm run test:api-simple && npm run test:query-formats; kill -TERM $(cat .server3000.pid) && rm .server3000.pid'",
+    "pipeline:3001": "zsh -c 'PORT=3001 npm run dev & echo $! > .server3001.pid && sleep 3 && PORT=3001 npm run test:analyze-endpoint; kill -TERM $(cat .server3001.pid) && rm .server3001.pid'",
+    "pipeline:analyze-only": "npm run test:analyze-only",
+    "pipeline:agents": "zsh -c 'npm run test:direct-query && npm run test:1inch-enhanced && npm run test:execute-approval && npm run test:execute-with-approval'",
+    "pipeline:all": "zsh -c 'npm run build && npm run test:preflight && npm run pipeline:3000 && npm run pipeline:3001 && npm run pipeline:analyze-only && npm run pipeline:agents'"
   },
   "keywords": [
     "defi",

@@ -148,7 +148,7 @@ async function testExecuteApprovalComprehensive() {
         chainId: 1,
         params: {
           fromTokenAddress: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', // ETH
-          toTokenAddress: '0xA0b86a33E6441b8435b662f0E2d0B8A0E4B5B8A0', // USDC
+          toTokenAddress: '0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC (mainnet)
           amount: '1000000000000000000', // 1 ETH
           fromAddress: '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6',
           slippage: 1

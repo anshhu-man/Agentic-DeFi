@@ -2,7 +2,8 @@ import { NetworkConfig } from '../types';
 
 export enum ChainId {
   ETHEREUM = 1,
-  POLYGON = 137
+  POLYGON = 137,
+  ROOTSTOCK = 30
 }
 
 export class NetworkConfigService {
@@ -33,6 +34,19 @@ export class NetworkConfigService {
       nativeCurrency: {
         name: 'MATIC',
         symbol: 'MATIC',
+        decimals: 18
+      }
+    });
+
+    // Rootstock Mainnet
+    this.networks.set(ChainId.ROOTSTOCK, {
+      chainId: ChainId.ROOTSTOCK,
+      name: 'Rootstock',
+      rpcUrl: process.env.ROOTSTOCK_RPC_URL || 'https://public-node.rsk.co',
+      blockExplorer: 'https://explorer.rsk.co',
+      nativeCurrency: {
+        name: 'Rootstock Bitcoin',
+        symbol: 'RBTC',
         decimals: 18
       }
     });

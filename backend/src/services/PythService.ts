@@ -29,7 +29,10 @@ export class PythService {
   async getRealTimePrices(symbols: string[]): Promise<PriceData[]> {
     try {
       const feedIds = symbols
-        .map(symbol => this.priceFeeds.get(symbol))
+        .map((symbol) =>
+          this.priceFeeds.get(symbol) ||
+          this.priceFeeds.get(`${String(symbol).toUpperCase().split('/')[0]}/USD`)
+        )
         .filter(Boolean) as string[];
 
       if (feedIds.length === 0) {
@@ -37,21 +40,31 @@ export class PythService {
         return [];
       }
 
-      const response = await this.hermes.getLatestPriceUpdates(feedIds, { parsed: true });
+      let feeds: any[] = [];
+      try {
+        const response = await this.hermes.getLatestPriceUpdates(feedIds, { parsed: true });
+        feeds = Array.isArray((response as any)?.parsed)
+          ? (response as any).parsed
+          : Array.isArray((response as any)?.updates)
+          ? (response as any).updates
+          : Array.isArray(response as any)
+          ? (response as any)
+          : [];
+        logger.info('Pyth Hermes response received', {
+          requestedIds: feedIds,
+          parsedCount: Array.isArray(feeds) ? feeds.length : null,
+        });
+      } catch (e: any) {
+        logger.warn('Hermes SDK getLatestPriceUpdates failed', {
+          status: (e as any)?.response?.status,
+          data: (e as any)?.response?.data,
+          message: (e as any)?.message || 'unknown',
+        });
+        feeds = [];
+      }
 
       const priceData: PriceData[] = [];
 
-      const feeds = Array.isArray((response as any)?.parsed)
-        ? (response as any).parsed
-        : Array.isArray((response as any)?.updates)
-        ? (response as any).updates
-        : Array.isArray(response as any)
-        ? (response as any)
-        : [];
-      logger.info('Pyth Hermes response received', {
-        requestedIds: feedIds,
-        parsedCount: Array.isArray(feeds) ? feeds.length : null,
-      });
       for (const feed of feeds) {
         const symbol = this.getFeedSymbol(feed.id);
         if (!symbol) {
@@ -188,8 +201,13 @@ export class PythService {
       });
 
       return priceData;
-    } catch (error) {
-      logger.error('Failed to get real-time prices', { symbols, error });
+    } catch (error: any) {
+      logger.error('Failed to get real-time prices', {
+        symbols,
+        status: (error as any)?.response?.status,
+        data: (error as any)?.response?.data,
+        message: (error as any)?.message || String(error),
+      });
       
       // Try to return cached data as fallback
       const cachedPrices: PriceData[] = [];

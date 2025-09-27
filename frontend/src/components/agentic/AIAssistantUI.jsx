@@ -424,7 +424,7 @@ export default function AIAssistantUI({ onClose }) {
 
   const composerRef = useRef(null)
 
-  const selected = allConversations.find((c) => c.id === selectedId) || null
+  const selected = allConversations.find((c) => c.id === selectedId) || widgetSyncConversation
 
   return (
     <div className="h-screen w-full bg-background text-foreground overflow-hidden">

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useState, useEffect } from "react";
 import { useWallet } from "@/contexts/WalletContext";
+import HealthBadge from "@/components/HealthBadge";
 
 const Navigation = () => {
   const location = useLocation();
@@ -78,6 +79,8 @@ const Navigation = () => {
               );
             })}
           </div>
+
+          <HealthBadge />
 
           {user ? (
             <div className="flex items-center gap-2">

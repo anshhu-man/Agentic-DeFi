@@ -5,6 +5,7 @@ import { Pencil, RefreshCw, Check, X, Square } from "lucide-react"
 import Message from "./Message"
 import Composer from "./Composer"
 import { cls, timeAgo } from "./utils"
+import Markdown from "../Markdown"
 
 function ThinkingMessage({ onPause }) {
   return (
@@ -132,7 +133,7 @@ const ChatPane = forwardRef(function ChatPane(
                   </div>
                 ) : (
                   <Message role={m.role} chartData={m.chartData} chartType={m.chartType}>
-                    <div className="whitespace-pre-wrap">{m.content}</div>
+                    <Markdown className="prose prose-invert max-w-none">{String(m.content ?? "")}</Markdown>
                     {m.role === "user" && (
                       <div className="mt-1 flex gap-2 text-[11px] text-muted-foreground">
                         <button className="inline-flex items-center gap-1 hover:underline" onClick={() => startEdit(m)}>

@@ -114,7 +114,9 @@ export class AgenticOrchestrator {
       });
 
       // STEP 2: Agent Routing
-      const routingPlan = await this.semanticRouter.routeToAgents(semanticAnalysis);
+      let routingPlan = await this.semanticRouter.routeToAgents(semanticAnalysis);
+      // Sanitize routing plan to only include available/registered agents
+      routingPlan = this.sanitizeRoutingPlan(routingPlan);
 
       logger.info('Agent routing completed', {
         primaryAgent: routingPlan.primaryAgent.name,
@@ -444,19 +446,22 @@ export class AgenticOrchestrator {
   }
 
   private mapIntentToAction(intentType: string): string {
+    // Map intents to actions actually implemented by registered agents (YieldAgent, AgenticYieldAgent, EnhancedYieldAgent)
     const intentActionMap: Record<string, string> = {
-      'YIELD_OPTIMIZATION': 'find_yield_opportunities',
-      'RISK_ASSESSMENT': 'assess_risk',
-      'GOVERNANCE_PARTICIPATION': 'find_governance_opportunities',
-      'PORTFOLIO_ANALYSIS': 'analyze_portfolio',
-      'MARKET_INTELLIGENCE': 'get_market_data',
-      'CROSS_CHAIN_ANALYSIS': 'compare_chains',
-      'ARBITRAGE_DETECTION': 'find_arbitrage',
-      'LIQUIDITY_MANAGEMENT': 'manage_liquidity',
-      'EMERGENCY_ACTION': 'emergency_response',
+      'YIELD_OPTIMIZATION': 'findBestYields',
+      'PORTFOLIO_ANALYSIS': 'analyzePortfolioYield',
+      'MARKET_INTELLIGENCE': 'getMarketOverview',
+      'CROSS_CHAIN_ANALYSIS': 'compareAcrossChains',
+
+      // Unsupported specialized intents fallback to safe informational action
+      'RISK_ASSESSMENT': 'getMarketOverview',
+      'GOVERNANCE_PARTICIPATION': 'getMarketOverview',
+      'ARBITRAGE_DETECTION': 'getMarketOverview',
+      'LIQUIDITY_MANAGEMENT': 'findBestYields',
+      'EMERGENCY_ACTION': 'getMarketOverview',
     };
 
-    return intentActionMap[intentType] || 'general_query';
+    return intentActionMap[intentType] || 'getMarketOverview';
   }
 
   private async synthesizeResponse(
@@ -590,6 +595,41 @@ export class AgenticOrchestrator {
     summary += `Successfully processed using ${successfulAgents}/${totalAgents} agents.`;
     
     return summary;
+  }
+
+  // Ensure the routing plan only references agents that are initialized in this.agents
+  private sanitizeRoutingPlan(routingPlan: AgentRoutingPlan): AgentRoutingPlan {
+    const available = new Set(Array.from(this.agents.keys()));
+
+    // Fix primary agent if not available
+    let primary = routingPlan.primaryAgent;
+    if (!available.has(primary.name)) {
+      primary = {
+        name: 'AgenticYieldAgent',
+        confidence: Math.min(0.95, (routingPlan.primaryAgent.confidence || 0.5)),
+        reasoning: 'Primary agent unavailable; switched to default agentic agent',
+      };
+    }
+
+    // Filter supporting agents
+    const supportingAgents = (routingPlan.supportingAgents || []).filter(a => available.has(a.name));
+
+    // Filter execution order and ensure primary is included first
+    let executionOrder = (routingPlan.executionOrder || []).filter(n => available.has(n));
+    if (!executionOrder.includes(primary.name)) {
+      executionOrder = [primary.name, ...executionOrder];
+    }
+
+    // Filter fallback plan to available agents
+    const fallbackPlan = (routingPlan.fallbackPlan || []).filter(n => available.has(n));
+
+    return {
+      ...routingPlan,
+      primaryAgent: primary,
+      supportingAgents,
+      executionOrder,
+      fallbackPlan,
+    };
   }
 
   private calculateOverallConfidence(

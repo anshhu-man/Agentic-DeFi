@@ -1,24 +1,17 @@
-import { logger } from './logger';
-
-// Simple Redis connection stub since Redis is not available
+/**
+ * Redis has been removed from the project.
+ * This module remains only as a no-op placeholder to avoid import errors in legacy code.
+ */
 export const connectRedis = async (): Promise<void> => {
-  throw new Error('Redis is not configured');
+  // No-op
+  return;
 };
 
 export const redis = {
-  get: async (key: string): Promise<string | null> => {
-    logger.warn('Redis not available, returning null for key:', key);
-    return null;
-  },
-  set: async (key: string, value: string, ttl?: number): Promise<void> => {
-    logger.warn('Redis not available, cannot set key:', key);
-  },
-  del: async (key: string): Promise<void> => {
-    logger.warn('Redis not available, cannot delete key:', key);
-  },
-  ping: async (): Promise<string> => {
-    throw new Error('Redis not available');
-  }
+  get: async (_key: string): Promise<string | null> => null,
+  set: async (_key: string, _value: string, _ttl?: number): Promise<void> => {},
+  del: async (_key: string): Promise<void> => {},
+  ping: async (): Promise<string> => 'pong',
 };
 
 export default redis;

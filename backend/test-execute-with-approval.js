@@ -1,6 +1,7 @@
-const { BlockchainActionService } = require('./src/services/BlockchainActionService');
-const { EnhancedAgenticOrchestrator } = require('./src/services/EnhancedAgenticOrchestrator');
-const { AgenticPromptService } = require('./src/services/AgenticPromptService');
+require('ts-node/register');
+const { BlockchainActionService } = require('./src/services/BlockchainActionService.ts');
+const { EnhancedAgenticOrchestrator } = require('./src/services/EnhancedAgenticOrchestrator.ts');
+const { AgenticPromptService } = require('./src/services/AgenticPromptService.ts');
 
 // Test the execute_with_approval mode with 1inch and Polygon integration
 async function testExecuteWithApproval() {
@@ -75,9 +76,9 @@ async function testExecuteWithApproval() {
     
     try {
       const swapDetails = await blockchainService.getSwapDetails({
-        tokenIn: '0xA0b86a33E6441b8435b662f0E2d0B8A0E4B5B8A0', // Example ETH address
-        tokenOut: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // Example USDC address on Polygon
-        amount: '1000000000000000000', // 1 ETH in wei
+        tokenIn: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WMATIC on Polygon
+        tokenOut: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC on Polygon
+        amount: '1000000000000000000', // 1 WMATIC in wei
         slippage: '1%',
         recipient: testRequest.userAddress
       });
@@ -95,9 +96,9 @@ async function testExecuteWithApproval() {
     
     try {
       const approvalTx = await blockchainService.checkAndPrepareApproval(
-        '0xA0b86a33E6441b8435b662f0E2d0B8A0E4B5B8A0', // Token address
+        '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // Approve WMATIC on Polygon
         testRequest.userAddress,
-        '1000000000000000000' // Amount
+        '1000000000000000000' // Amount (1 WMATIC)
       );
       
       if (approvalTx) {
