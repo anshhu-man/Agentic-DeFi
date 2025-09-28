@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import VaultCreator from "@/components/vault/VaultCreator";
 import VaultDashboard from "@/components/vault/VaultDashboard";
 import PythMonitor from "@/components/vault/PythMonitor";
-import { depositETH, setTriggersUSD, getPosition as getVaultPosition, executeOnce, getKeeperHealth } from "@/services/vault";
+import { depositETH, setTriggersUSD, getPosition as getVaultPosition, executeOnce, getKeeperHealth, getCurrentPrice as getVaultCurrentPrice } from "@/services/vault";
 
 declare global {
   interface Window {
@@ -240,21 +240,54 @@ const Explorer = () => {
     }
   };
 
+  // Helpers
+  const WEI = 1000000000000000000n;
+  const weiToFloat = (s: string): number => {
+    try {
+      const bi = BigInt(s);
+      const intPart = Number(bi / WEI);
+      const fracPart = Number(bi % WEI) / 1e18;
+      return intPart + fracPart;
+    } catch {
+      return 0;
+    }
+  };
+
+  const resolveCurrentPrice = async (posResp?: any): Promise<number> => {
+    // 1) Use backend position payload if present
+    let p = Number(posResp?.currentPrice || 0);
+    if (p > 0) return p;
+
+    // 2) Query backend /api/vault/current-price (readCurrentPrice with Hermes fallback)
+    try {
+      const cp = await getVaultCurrentPrice();
+      const f = cp?.price18 ? weiToFloat(String(cp.price18)) : 0;
+      if (f > 0) return f;
+    } catch {}
+
+    // 3) Fallback to Hermes off-chain price
+    try {
+      const prices = await apiService.getPythPrices(["ETH/USD"]).catch(() => []);
+      const eth = Array.isArray(prices) ? prices.find((x: any) => x.symbol === "ETH/USD") : null;
+      const f = Number(eth?.price || 0);
+      if (f > 0) return f;
+    } catch {}
+
+    return 0;
+  };
+
   // Vault-related functions
   const fetchVaultData = async () => {
     if (!walletAddress) return;
 
     try {
-      const [posResp, bands] = await Promise.all([
-        getVaultPosition(walletAddress).catch(() => null as any),
-        apiService.getConfidenceBands(defaultSymbols).catch(() => []),
-      ]);
-
-      setConfidenceBands(bands);
+      const posResp = await getVaultPosition(walletAddress).catch(() => null as any);
 
       if (posResp && posResp.position) {
         const amountETH = Number(posResp.position.amountETH || "0");
-        const currentPrice = Number(posResp.currentPrice || "0");
+
+        const currentPrice = await resolveCurrentPrice(posResp);
+
         const stopUsd = Number(posResp.position.stopLossPrice18 || "0");
         const takeUsd = Number(posResp.position.takeProfitPrice18 || "0");
         const confAbs = Number(posResp.priceConfidence || "0");
@@ -263,6 +296,22 @@ const Explorer = () => {
         const stopPct = entryPrice > 0 ? ((entryPrice - stopUsd) / entryPrice) * 100 : 0;
         const takePct = entryPrice > 0 ? ((takeUsd - entryPrice) / entryPrice) * 100 : 0;
         const confPct = currentPrice > 0 ? (confAbs / currentPrice) * 100 : 0;
+
+        // Compute confidence band locally from current price and absolute confidence (confAbs)
+        // Lower/Upper are price ± confAbs; confidence shown as (100 - confPct) capped within [0,100]
+        const bandsLocal: Array<{ symbol: string; upperBound: number; lowerBound: number; confidence: number; timestamp: string }> = [];
+        if (currentPrice > 0) {
+          const lower = Math.max(0, currentPrice - confAbs);
+          const upper = currentPrice + confAbs;
+          bandsLocal.push({
+            symbol: "ETH/USD",
+            lowerBound: lower,
+            upperBound: upper,
+            confidence: Math.max(0, Math.min(100, 100 - confPct)),
+            timestamp: new Date().toISOString(),
+          });
+        }
+        setConfidenceBands(bandsLocal);
 
         const position = {
           id: walletAddress,
@@ -294,10 +343,54 @@ const Explorer = () => {
     if (!walletAddress) return;
 
     try {
-      const checks = await apiService.checkTriggerConditions(walletAddress);
-      setTriggerChecks(checks);
+      const posResp = await getVaultPosition(walletAddress).catch(() => null as any);
+      if (posResp && posResp.position) {
+        const currentPrice = await resolveCurrentPrice(posResp);
+        const stopUsd = Number(posResp.position.stopLossPrice18 || "0");
+        const takeUsd = Number(posResp.position.takeProfitPrice18 || "0");
+        const confAbs = Number(posResp.priceConfidence || "0");
+        const confPct = currentPrice > 0 ? (confAbs / currentPrice) * 100 : 0;
+
+        let shouldExecute = false as boolean;
+        let triggerType: "stop_loss" | "take_profit" = "stop_loss";
+        let triggerPrice = 0;
+
+        if (currentPrice > 0 && posResp.position.active) {
+          if (currentPrice <= stopUsd) {
+            shouldExecute = true;
+            triggerType = "stop_loss";
+            triggerPrice = stopUsd;
+          } else if (currentPrice >= takeUsd) {
+            shouldExecute = true;
+            triggerType = "take_profit";
+            triggerPrice = takeUsd;
+          }
+        }
+
+        const reason =
+          currentPrice > 0
+            ? `Stop Δ: ${((currentPrice - stopUsd) / currentPrice * 100).toFixed(2)}% | Take Δ: ${((takeUsd - currentPrice) / currentPrice * 100).toFixed(2)}%`
+            : "Price unavailable";
+
+        const check = {
+          vaultId: walletAddress,
+          asset: "ETH/USD",
+          triggerType,
+          currentPrice,
+          triggerPrice,
+          confidence: Math.max(0, Math.min(100, confPct)),
+          shouldExecute,
+          reason,
+          timestamp: new Date().toISOString(),
+        };
+
+        setTriggerChecks([check]);
+      } else {
+        setTriggerChecks([]);
+      }
     } catch (e) {
       console.error("Failed to check triggers:", e);
+      setTriggerChecks([]);
     }
   };
 
@@ -415,6 +508,31 @@ const Explorer = () => {
           title: "Emergency exit completed",
           description: `Transaction: ${result.txHash}`,
         });
+
+        // Add a trigger event for emergency exit
+        try {
+          const posResp = await getVaultPosition(walletAddress).catch(() => null as any);
+          const currentPrice = await resolveCurrentPrice(posResp);
+          const confAbs = Number(posResp?.priceConfidence || "0");
+          const confPct = currentPrice > 0 ? (confAbs / currentPrice) * 100 : 0;
+
+          setTriggerEvents((prev) => [
+            {
+              id: Date.now().toString(),
+              vaultId: positionId,
+              type: "emergency_exit",
+              price: currentPrice || 0,
+              confidence: Math.max(0, Math.min(100, confPct)),
+              timestamp: new Date().toISOString(),
+              executed: true,
+              txHash: result.txHash,
+            },
+            ...prev,
+          ]);
+        } catch {
+          // non-fatal: still proceed to refresh data
+        }
+
         fetchVaultData();
       } else {
         throw new Error(result.error || "Emergency exit failed");

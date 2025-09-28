@@ -302,25 +302,7 @@ const VaultDashboard = ({
                         </div>
 
                         <div className="flex gap-3">
-                          {(getPositionStatus(position).status === "stop_loss_ready" ||
-                            getPositionStatus(position).status === "take_profit_ready") && (
-                            <Button
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onExecuteTrigger(
-                                  position.id,
-                                  getPositionStatus(position).status === "stop_loss_ready"
-                                    ? "stop_loss"
-                                    : "take_profit"
-                                );
-                              }}
-                              className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-medium px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
-                            >
-                              <Zap className="w-4 h-4 mr-1" />
-                              Execute
-                            </Button>
-                          )}
+                          
                           <Button
                             variant="outline"
                             size="sm"

@@ -319,15 +319,19 @@ export class SafeExitVaultService {
         depositTime: positionData.depositTime.toNumber(),
       };
       
-      // Get current price (handle pull-oracle freshness: may revert before any on-chain update)
+      // Get current price using unified helper (includes Hermes fallback if pull-oracle not yet posted on-chain)
       let currentPrice = '0';
       let priceConfidence = '0';
       try {
-        const [price18, conf18] = await vault.getCurrentPrice(vaultConfig.maxStalenessSeconds);
+        const { price18, conf18 } = await this.readCurrentPrice(
+          vaultAddress,
+          network,
+          vaultConfig.maxStalenessSeconds
+        );
         currentPrice = ethers.utils.formatEther(price18);
         priceConfidence = ethers.utils.formatEther(conf18);
       } catch (e: any) {
-        // No on-chain price posted yet (pull-oracle); return zeros and do not block position read
+        // If even fallback fails, do not block position read
         currentPrice = '0';
         priceConfidence = '0';
       }

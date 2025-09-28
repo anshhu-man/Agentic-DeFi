@@ -118,7 +118,8 @@ export async function executeOnce(userAddress: string): Promise<{
 }
 
 export async function getKeeperHealth(): Promise<any> {
-  return fetchJson(`${API_BASE}/api/vault/keeper-health`);
+  // Backend does not expose /api/vault/keeper-health; use Pyth health instead
+  return fetchJson(`${API_BASE}/api/pyth/health`);
 }
 
 export async function getCurrentPrice(): Promise<{ price18: string; conf18: string }> {
