@@ -93,7 +93,7 @@ Agentic-DeFi leverages Fluence Virtual Servers to deploy AI-powered agentic back
   - Example: `GET /api/pyth/price?symbol=ETHUSD` returns latest price feed.
 
 ## Examples: Demo Inputs/Outputs, Screenshots, API Calls
-![Fluence Dashboard](./screenshots/Fluencetest.jpej)
+![Fluence Dashboard](./screenshots/fluencetest.jpeg)
 [Link Text](http://81.15.150.160:3000/health)
 ### Pyth Network
 
